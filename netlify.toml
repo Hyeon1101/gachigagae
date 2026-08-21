@@ -1,0 +1,57 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/pettour"
+  to = "/.netlify/functions/pettour"
+  status = 200
+
+[[redirects]]
+  from = "/api/extra"
+  to = "/.netlify/functions/extradata"
+  status = 200
+
+[[redirects]]
+  from = "/api/ai"
+  to = "/.netlify/functions/ai"
+  status = 200
+
+[[redirects]]
+  from = "/api/place"
+  to = "/.netlify/functions/place"
+  status = 200
+
+# ─────────────────────────────────────────────────────────────
+# 보안 헤더
+#
+# 화면에 뿌리는 글의 상당수는 우리가 쓴 글이 아니다(공공데이터 등록자, 네이버
+# 후기 작성자). 코드 쪽에서 전부 이스케이프하지만, 한 군데라도 새면 브라우저가
+# 마지막으로 막아 주도록 CSP 를 함께 세운다.
+#
+# ※ 인라인 <script> 와 on... 속성은 전부 걷어냈으므로 script-src 에
+#   'unsafe-inline' 이 없다. 새 코드에 인라인 스크립트를 넣으면 그때부터
+#   그 코드만 조용히 죽는다 — 반드시 외부 .js 로 뺄 것.
+# ※ style 속성(style="…")은 마크업 곳곳에 있어 style-src 만 'unsafe-inline' 을 둔다.
+# ※ 안드로이드 앱(Capacitor)은 자산을 기기에서 읽으므로 이 헤더가 적용되지 않는다.
+#   앱에도 같은 정책을 걸려면 index.html 에 <meta http-equiv> 로 넣고
+#   실제 기기에서 지도·로그인·공유를 확인한 뒤에 반영할 것.
+# ─────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # 이 서비스는 위치를 묻지 않는다(수집 전면 제거) → 브라우저 단에서도 잠근다
+    Permissions-Policy = "geolocation=(), camera=(), microphone=(), payment=(), usb=(), magnetometer=(), gyroscope=()"
+    # 구글 로그인·카카오 공유가 팝업을 쓰므로 allow-popups 가 필요하다
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Content-Security-Policy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' https://dapi.kakao.com https://t1.kakaocdn.net https://*.daumcdn.net https://accounts.google.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com; font-src 'self' data: https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; connect-src 'self' https://ggagae.com https://www.ggagae.com https://dapi.kakao.com https://*.daumcdn.net https://*.kakao.com https://*.kakaocdn.net https://accounts.google.com https://*.googleusercontent.com https://cdn.jsdelivr.net https://unpkg.com; frame-src https://accounts.google.com https://*.kakao.com; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"
+
+# 팀 내부 진단 도구 — 검색엔진에 실릴 이유가 없다
+[[headers]]
+  for = "/apitest.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"

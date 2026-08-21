@@ -1,0 +1,146 @@
+/* ─────────────────────────────────────────────────────────────
+ * 가개 도우미 — 화면을 따라다니는 마스코트
+ *
+ *  · position:fixed 라서 어느 화면을 스크롤해도 늘 같은 자리에 있다.
+ *  · 검색 중에는 달리는 스프라이트(dog_run_1~4)로 바뀌고 좌우로 뛴다.
+ *  · 안내가 불편한 사용자는 [안내 끄기]로 완전히 숨길 수 있고,
+ *    그때는 오른쪽 아래 작은 [도우미 켜기] 버튼만 남는다.
+ *  · prefers-reduced-motion 을 켠 사용자에게는 뛰는 연출을 하지 않는다.
+ *
+ *  겹침 순서: 상세 패널(890) < 도우미(940) < 지역 팝오버(950) < AI 모달(1000)
+ *  → 상세 패널·AI 모달이 열리면 JS가 .bd-hold 를 걸어 잠시 물러난다.
+ * ───────────────────────────────────────────────────────────── */
+
+#buddy {
+  position: fixed; right: 20px; bottom: 20px; z-index: 940;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+  pointer-events: none;                   /* 빈 여백이 지도·목록 클릭을 먹지 않게 */
+  transition: opacity .28s var(--ease), transform .28s var(--ease);
+}
+#buddy > * { pointer-events: auto; }
+#buddy.bd-off { display: none; }
+#buddy.bd-hold { opacity: 0; transform: translateY(12px); pointer-events: none; }
+#buddy.bd-hold > * { pointer-events: none; }
+
+/* ── 말풍선 ── */
+.bd-bubble {
+  position: relative; max-width: min(300px, calc(100vw - 44px));
+  background: var(--canvas); border: 1px solid var(--hairline);
+  border-radius: 16px; box-shadow: var(--shadow-md);
+  padding: 12px 14px 8px; font-size: 14px; line-height: 1.55; color: var(--ink);
+  animation: bd-pop .28s var(--ease);
+}
+.bd-bubble::after {                        /* 강아지 쪽을 가리키는 꼬리 */
+  content: ""; position: absolute; right: 30px; bottom: -7px;
+  width: 12px; height: 12px; background: var(--canvas);
+  border-right: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline);
+  transform: rotate(45deg);
+}
+.bd-bubble.hidden { display: none; }
+.bd-say b { font-weight: 800; background: var(--banana-soft); padding: 1px 5px; border-radius: 6px; }
+.bd-hint { display: inline-block; margin-top: 6px; font-size: 12.5px; color: var(--mute); line-height: 1.5; }
+.bd-hint b { background: none; padding: 0; color: var(--ink); }
+
+/* 말풍선 아래 조작줄 — 소리 / 안내 끄기 */
+.bd-tools { display: flex; justify-content: flex-end; gap: 4px; margin-top: 8px; }
+.bd-tools button {
+  border: 0; background: none; cursor: pointer; color: var(--mute);
+  font-size: 12px; font-weight: 600; padding: 5px 8px; border-radius: var(--r-pill);
+  display: inline-flex; align-items: center; gap: 4px; transition: background .2s var(--ease), color .2s var(--ease);
+}
+.bd-tools button:hover { background: var(--cloud); color: var(--ink); }
+.bd-tools svg { width: 13px; height: 13px; }
+
+/* ── 강아지 ── */
+.bd-dog {
+  position: relative; width: 96px; height: 82px;
+  border: 0; background: none; padding: 0; cursor: pointer;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .12));
+}
+.bd-dog img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; object-position: bottom center;
+  animation: bd-bob 3.6s ease-in-out infinite;
+}
+.bd-dog:active img { transform: scale(.94); }
+
+/* 검색 중 — 좌우로 달린다. 왼쪽으로 갈 때는 스프라이트를 뒤집는다.
+   두 애니메이션의 길이가 같아야 방향과 이동이 어긋나지 않는다. */
+#buddy.bd-run { animation: bd-dash 2.4s ease-in-out infinite; }
+#buddy.bd-run .bd-dog { animation: bd-face 2.4s steps(1) infinite; }
+#buddy.bd-run .bd-dog img { animation: bd-hop .26s ease-in-out infinite alternate; }
+
+@keyframes bd-dash {
+  0%   { transform: translateX(0); }
+  50%  { transform: translateX(-116px); }
+  100% { transform: translateX(0); }
+}
+@keyframes bd-face {
+  0%   { transform: scaleX(-1); }          /* 왼쪽으로 뛰는 구간 */
+  50%  { transform: scaleX(1); }           /* 제자리로 돌아오는 구간 */
+}
+@keyframes bd-hop { from { transform: translateY(0); } to { transform: translateY(-5px); } }
+@keyframes bd-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes bd-pop { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+
+/* 스크롤하면 진행 방향으로 잠깐 고개를 든다 — "따라오는" 느낌 */
+#buddy.bd-nudge .bd-dog img { animation: bd-nudge .5s var(--ease); }
+@keyframes bd-nudge { 0%, 100% { transform: translateY(0) rotate(0); } 45% { transform: translateY(-9px) rotate(-6deg); } }
+
+/* ── 꺼둔 상태에서 남는 작은 버튼 ── */
+#buddyOn {
+  position: fixed; right: 20px; bottom: 20px; z-index: 940;
+  display: none; align-items: center; gap: 7px;
+  border: 1px solid var(--hairline); background: var(--canvas);
+  border-radius: var(--r-pill); box-shadow: var(--shadow-md);
+  padding: 8px 14px 8px 9px; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: var(--ink);
+  transition: background .2s var(--ease), box-shadow .2s var(--ease);
+}
+#buddyOn.show { display: inline-flex; }
+#buddyOn:hover { background: var(--cloud); box-shadow: var(--shadow-lg); }
+#buddyOn img { width: 26px; height: 26px; object-fit: contain; }
+
+/* ── 앱(Capacitor) — 하단 탭바를 피한다 ── */
+/* 탭바 위 24px — 기존 14px 에서 10px 더 올렸다(마스코트가 탭바에 붙어 보였다) */
+.is-app #buddy,
+.is-app #buddyOn { bottom: calc(var(--tabbar-total) + var(--safe-bottom) + 24px); }
+
+/* 앱에서는 홈 첫 화면이 「배너 → 카테고리로 찾기」라 도우미 말풍선이 그 위를
+ * 덮으면 안 된다. 폭·글자·강아지를 줄여 오른쪽 아래에 얌전히 붙인다. */
+.is-app #buddy { right: 12px; gap: 6px; }
+.is-app .bd-bubble {
+  max-width: min(196px, calc(100vw - 110px));
+  font-size: 12px; padding: 8px 10px 5px;
+}
+.is-app .bd-ask { margin-top: 7px; padding-top: 6px; gap: 4px; }
+.is-app .bd-ask-q { font-size: 11px; flex-basis: 100%; margin-bottom: 2px; }
+.is-app .bd-go, .is-app .bd-no { padding: 4px 10px; font-size: 11.5px; }
+.is-app .bd-hint { font-size: 11.5px; margin-top: 4px; }
+.is-app .bd-tools { margin-top: 5px; }
+.is-app .bd-dog { width: 68px; height: 58px; }
+
+/* ── 모바일 ── */
+@media (max-width: 720px) {
+  #buddy { right: 14px; bottom: 14px; gap: 8px; }
+  #buddyOn { right: 14px; bottom: 14px; }
+  .bd-dog { width: 72px; height: 62px; }
+  .bd-bubble { font-size: 13px; padding: 10px 12px 6px; max-width: calc(100vw - 32px); }
+  @keyframes bd-dash {
+    0%   { transform: translateX(0); }
+    50%  { transform: translateX(-78px); }
+    100% { transform: translateX(0); }
+  }
+}
+
+/* ── 움직임을 줄여 달라고 설정한 사용자 ──
+   달리는 연출은 접고 그림만 조용히 둔다(JS도 프레임 교체를 멈춘다). */
+@media (prefers-reduced-motion: reduce) {
+  #buddy,
+  #buddy.bd-run,
+  #buddy.bd-run .bd-dog,
+  #buddy.bd-run .bd-dog img,
+  #buddy.bd-nudge .bd-dog img,
+  .bd-dog img,
+  .bd-bubble { animation: none !important; }
+}

@@ -1,0 +1,843 @@
+/* ─────────────────────────────────────────────────────────────
+ * 같이가개 — 안드로이드 앱(Capacitor) 전용 레이어
+ *
+ * 웹에는 전혀 영향을 주지 않는다. js/appshell.js 가 네이티브 컨테이너를
+ * 감지했을 때만 <html class="is-app"> 를 붙이고, 아래 규칙이 그때 켜진다.
+ *
+ * 설계 원칙 3가지
+ *  1) 이동은 엄지로 — 탭은 화면 아래, 손가락이 닿는 곳에 둔다.
+ *  2) 상단은 정보만 — 브랜드·지역만 남기고 조작 버튼은 아래로 내린다.
+ *  3) 노치와 제스처바를 피한다 — 모든 고정 요소는 safe-area 를 존중한다.
+ * ───────────────────────────────────────────────────────────── */
+
+.is-app {
+  /* 하단 탭바 높이 + 제스처바 여백.
+     --tabbar-h 는 버튼 높이고, 실제로 차지하는 높이는 위쪽 테두리 1px 이 더해진다.
+     본문·토스트·상세 패널은 반드시 --tabbar-total 을 써야 1px 씩 가려지지 않는다. */
+  --tabbar-h: 62px;
+  --tabbar-total: calc(var(--tabbar-h) + 1px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── 네이티브 느낌 만들기 ───────────────────────────────── */
+.is-app body {
+  /* 길게 눌러도 텍스트 선택·복사 팝업이 뜨지 않게 (지도 조작 방해) */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  /* 탭할 때 파란 하이라이트 사각형 제거 */
+  -webkit-tap-highlight-color: transparent;
+  /* 끝까지 스크롤했을 때 배경이 딸려 늘어나는 현상 차단 */
+  overscroll-behavior: none;
+}
+/* 단, 사용자가 실제로 읽고 복사할 만한 본문은 선택 가능하게 되돌린다 */
+.is-app .place-card, .is-app .detail, .is-app .ai-body,
+.is-app [class*="detail"], .is-app .tip-body {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ── 상단바: 조작 버튼을 덜어내고 얇게 ───────────────────── */
+.is-app { --topbar-h: 56px; }
+.is-app .topbar {
+  padding-top: var(--safe-top);
+  height: calc(56px + var(--safe-top));
+  gap: 8px;
+}
+/* 상단 탭 4개는 하단 탭바로 옮겼다 */
+.is-app .topbar .nav { display: none; }
+/* 「내 반려동물」은 홈 화면 안에 이미 큰 카드로 있다 — 상단에서는 뺀다 */
+.is-app #profileBtn { display: none; }
+.is-app .brand small { display: none; }
+.is-app .brand b { font-size: 18px; }
+
+/* ── 본문: 위는 상단바, 아래는 탭바만큼 비운다 ───────────── */
+.is-app .page {
+  inset: calc(56px + var(--safe-top)) 0 calc(var(--tabbar-total) + var(--safe-bottom)) 0;
+  /* 관성 스크롤 */
+  -webkit-overflow-scrolling: touch;
+}
+.is-app { --page-x: 18px; }
+
+/* ── 하단 탭바 ───────────────────────────────────────────── */
+.app-tabbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 950;
+  display: none;                     /* 앱에서만 켜진다 */
+  background: var(--canvas);
+  border-top: 1px solid var(--hairline);
+  padding-bottom: var(--safe-bottom);
+}
+.is-app .app-tabbar { display: flex; }
+
+/* 탭 버튼에는 app.js 배선을 물려받으려고 .nav-btn 을 함께 달았다.
+   그 바람에 웹용 .nav-btn.active(노란 알약 배경 + 그림자)까지 따라오므로 지운다. */
+.app-tabbar .tab.nav-btn,
+.app-tabbar .tab.nav-btn.active,
+.app-tabbar .tab.nav-btn:hover {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  height: var(--tabbar-h);
+  padding: 0;
+}
+
+.app-tabbar .tab {
+  flex: 1 1 0;
+  min-width: 0;
+  height: var(--tabbar-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  color: var(--mute);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  /* 터치 목표를 세로 전체로 — 아이콘만 눌러야 하는 답답함을 없앤다 */
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+.app-tabbar .tab svg { width: 22px; height: 22px; }
+.app-tabbar .tab b { font-weight: 600; }
+
+/* 선택된 탭: 색 + 위쪽 짧은 바 (색맹이어도 위치로 구분되게) */
+.app-tabbar .tab.active { color: var(--ink); }
+.app-tabbar .tab.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 26px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--banana-deep);
+}
+.app-tabbar .tab:active { background: var(--cloud); }
+
+/* ── 오프라인 안내 띠 ────────────────────────────────────── */
+.app-offline {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(var(--tabbar-total) + var(--safe-bottom));
+  z-index: 960;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transform: translateY(100%);
+  transition: transform .25s var(--ease);
+}
+.is-app .app-offline { display: flex; }
+.app-offline.show { transform: translateY(0); }
+
+/* 띠에서 바로 원인을 확인할 수 있게 — 추측 대신 사실을 보여 준다 */
+.app-offline-diag {
+  flex: none;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, .45);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ── 연결 진단 시트 ──────────────────────────────────────── */
+.app-diag {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, .45);
+}
+.app-diag.show { display: flex; }
+
+.app-diag .diag-sheet {
+  width: 100%;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 18px 18px 0 0;
+  padding-bottom: var(--safe-bottom);
+}
+.app-diag header,
+.app-diag footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+}
+.app-diag header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line, #eee);
+  font-size: 16px;
+}
+.app-diag header button {
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.app-diag .diag-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-size: 13px;
+}
+.app-diag .diag-env,
+.app-diag .diag-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 0;
+}
+.app-diag .diag-env b,
+.app-diag .diag-row b { font-size: 13px; }
+.app-diag .diag-env span,
+.app-diag .diag-row span {
+  color: var(--ink-sub, #666);
+  font-size: 12px;
+  /* 오류 문구·URL 이 길어도 가로로 넘치지 않게 */
+  word-break: break-all;
+}
+.app-diag .diag-sep {
+  height: 1px;
+  background: var(--line, #eee);
+  margin: 8px 0;
+}
+.app-diag .diag-verdict {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-soft, #f6f6f7);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+.app-diag footer { border-top: 1px solid var(--line, #eee); }
+.app-diag footer button {
+  flex: 1;
+  min-height: 44px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line, #ddd);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.app-diag footer .diag-copy {
+  background: var(--yellow, #FFE135);
+  border-color: transparent;
+}
+
+/* ── 종료 확인 토스트 ────────────────────────────────────── */
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-total) + var(--safe-bottom) + 18px);
+  transform: translate(-50%, 14px);
+  z-index: 970;
+  padding: 11px 18px;
+  border-radius: var(--r-pill);
+  background: rgba(25, 25, 29, 0.92);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s var(--ease), transform .2s var(--ease);
+}
+.app-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ── 터치 목표 최소 크기 (구글 권장 48dp) ────────────────── */
+.is-app .btn, .is-app .chip, .is-app .nav-btn,
+.is-app .region-btn, .is-app .lang-btn {
+  min-height: 44px;
+}
+.is-app .rp-grid button { min-height: 44px; }
+
+/* ── 상세 패널: 앱에서는 아래에서 올라오는 시트로 ────────── */
+.is-app .detail-panel, .is-app [class*="detail"][class*="panel"] {
+  top: calc(56px + var(--safe-top));
+  bottom: calc(var(--tabbar-total) + var(--safe-bottom));
+}
+
+/* ── 목록은 한 줄에 한 장 ────────────────────────────────
+   폰 폭에서 2열로 두면 카드 하나가 180px 남짓이라 「카카오맵 길찾기」·
+   「상세·규정」 버튼이 두 줄로 접히고 사진도 우표만 해진다.
+   한 장씩 크게 보여 주는 편이 훨씬 읽기 쉽다. */
+.is-app .place-list {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+.is-app .pc-thumb { height: 190px; }
+.is-app .pc-title { font-size: 16px; }
+
+/* ── 앱에서는 의미 없는 웹 요소 감추기 ───────────────────── */
+.is-app .pwa-install, .is-app .demo-banner-web { display: none; }
+
+/* ══════════════════════════════════════════════════════════════
+ * 📱 앱 홈 — 폰 한 화면에 담기
+ *
+ * 웹 홈은 스크롤하며 읽는 편집형 지면이라 히어로만 430px 이다. 앱에서는
+ * 「배너 → 카테고리로 찾기」가 첫 화면 안에서 바로 보여야 하므로
+ *   ① 배너를 사진 있는 한 줄짜리로 줄이고
+ *   ② 카테고리 격자를 배너 바로 밑으로 끌어올리고(순서 재배치)
+ *   ③ 나머지 섹션의 여백·글자를 전부 조인다.
+ * 웹 화면은 이 파일을 읽지 않으므로(.is-app 스코프) 영향이 없다.
+ * ══════════════════════════════════════════════════════════════ */
+
+/* ── 앱에서 감추는 홈 요소 ─────────────────────────────────
+ * 「지역 먼저 고르기」는 상단바의 지역 버튼과 하는 일이 같아 앱에서는 자리만 차지한다.
+ * 검색창 아래 예시 칩도 첫 화면을 한 줄 더 밀어내므로 앱에서는 뺀다. */
+.is-app #pageHome > .region-quick { display: none; }
+.is-app .ai-examples { display: none; }
+/* 퀴즈 밴드는 하단 탭바의 「반려동물 팁」이 같은 곳으로 데려다주므로 앱에서는 뺀다 */
+.is-app #pageHome > .band { display: none; }
+
+/* 순서 재배치 — DOM 은 그대로 두고 보이는 차례만 바꾼다.
+ * ⚠️ .page 는 absolute + inset 이라 높이가 고정이다. 그 안을 flex 컬럼으로 만들면
+ * 기본값 flex-shrink:1 때문에 자식들이 화면 높이에 맞춰 짜부라진다(실측: 배너가
+ * 197px → 1px). 그래서 자식은 전부 flex:none 으로 고정하고 넘치는 만큼 스크롤시킨다. */
+.is-app #pageHome { display: flex; flex-direction: column; }
+.is-app #pageHome > * { flex: 0 0 auto; }
+.is-app #pageHome > .hero         { order: 1; }
+.is-app #pageHome > .hot-band     { order: 2; }   /* HOT NOW — 검색창 바로 아래 */
+.is-app #pageHome > #secCat       { order: 3; }   /* 카테고리로 찾기 */
+.is-app #pageHome > #secPet       { order: 4; }
+.is-app #pageHome > .guide-strip  { order: 5; }
+.is-app #pageHome > .band         { order: 6; }
+.is-app #pageHome > #secSrc       { order: 7; }
+
+/* ── ① 배너: 430px → 한 줄 ──────────────────────────────── */
+.is-app .hero { min-height: 0; }
+.is-app .hero-inner { padding: 12px var(--page-x) 13px; }
+.is-app .hero .eyebrow { font-size: 10.5px; }
+.is-app .hero-title {
+  font-size: 20px; line-height: 1.25; margin-top: 5px; letter-spacing: -.03em;
+}
+.is-app .hero-title br { display: none; }   /* 3줄 헤드라인 → 한 줄 */
+.is-app .hero-lead { display: none; }       /* 배너에서 설명문은 뺀다 */
+
+/* 검색(제미나이)은 배너의 핵심이라 남기되 높이를 줄인다 */
+.is-app .ai-bar { margin: 12px 0 0; padding: 5px 5px 5px 16px; }
+.is-app .ai-bar input { font-size: 15px; padding: 9px 0; }
+.is-app .ai-bar-btn { padding: 9px 18px; font-size: 14px; }
+
+/* 예시 칩은 접히지 않고 옆으로 밀리게 — 세로 높이를 한 줄로 고정 */
+.is-app .ai-examples {
+  margin-top: 8px; flex-wrap: nowrap; overflow-x: auto; gap: 6px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.is-app .ai-examples::-webkit-scrollbar { display: none; }
+.is-app .ex-chip { flex: none; font-size: 12.5px; padding: 6px 12px; min-height: 32px; }
+
+/* ── ② 카테고리: 가로 5칸 × 2줄 (10개) — 아이콘 위, 이름 아래의 작은 타일 ──── */
+.is-app #secCat { padding-top: 12px; }
+/* 「전국 N곳」은 제목 옆에 붙여 머리글을 한 줄 아낀다 */
+.is-app #secCat .section-head { margin-bottom: 7px; }
+.is-app #secCat .section-sub { flex-basis: auto; margin-left: auto; }
+.is-app .cat-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.is-app .cat-btn {
+  padding: 9px 3px 8px; gap: 0; border-radius: 11px;
+  align-items: center; text-align: center;
+}
+.is-app .cat-ic { margin-bottom: 3px; }
+.is-app .cat-ic .ic { width: 21px; height: 21px; }
+/* 5칸이라 폭이 좁다 — 「식당·카페」가 두 줄로 접히지 않게 글자를 줄이고 자간을 좁힌다 */
+.is-app .cat-name {
+  font-size: 11px; letter-spacing: -.06em; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.is-app .cat-total { font-size: 9.5px; letter-spacing: -.04em; }
+.is-app .cat-real { display: none; }   /* 좁은 타일에 배지까지는 무리 */
+
+/* ── ③ 공통 여백·제목 축소 ──────────────────────────────── */
+.is-app .section { padding: 14px var(--page-x) 0; }
+.is-app .section-head { margin-bottom: 8px; gap: 8px; }
+.is-app .section-head h2 { font-size: 17px; }
+.is-app .section-eyebrow { margin-bottom: 2px; font-size: 10px; }
+.is-app .section-sub { font-size: 11.5px; margin-left: 0; flex-basis: 100%; }
+
+.is-app .guide-strip { margin-top: 0; padding: 9px 13px; gap: 9px; }
+.is-app .guide-mascot { width: 38px; height: 38px; }
+.is-app .guide-say { font-size: 12.5px; line-height: 1.4; }
+
+.is-app .band { margin-top: 16px; min-height: 0; }
+.is-app .band-copy { padding: 14px var(--page-x); }
+.is-app .hot-band { margin-top: 0; padding: 12px 0 14px; }
+
+/* ── ③-1 내 반려동물 정보 등록: 한 화면에 담기 ──────────────
+ * 라벨·입력·체크박스가 전부 웹 크기라 폰에서 세로로 한없이 길어졌다.
+ * 2열 그리드를 유지하되 높이를 만드는 값(패딩·글자·입력 높이)만 줄인다. */
+.is-app .pet-form-card { padding: 10px; border-radius: 13px; }
+.is-app .pf-head { gap: 8px; margin-bottom: 7px; }
+.is-app .pf-avatar { width: 32px; height: 32px; }
+.is-app .pf-head-txt h2 { font-size: 14.5px; }
+.is-app .pf-head-txt p { font-size: 10.5px; line-height: 1.3; }
+.is-app .pf-state { font-size: 10.5px; padding: 3px 8px; }
+.is-app .breed-ai { padding: 8px; margin-bottom: 7px; border-radius: 10px; }
+.is-app .breed-ai > label, .is-app .breed-ai b { font-size: 12px; }
+.is-app .form-grid { gap: 7px; }
+.is-app .form-grid label,
+.is-app .pet-form-card label { font-size: 11.5px; }
+.is-app .pet-form-card input[type="text"],
+.is-app .pet-form-card input[type="number"],
+.is-app .pet-form-card input[type="search"],
+.is-app .pet-form-card select {
+  height: 34px; min-height: 34px; padding: 0 9px; font-size: 13px;
+}
+.is-app .gear-set { padding: 7px 9px; gap: 4px 8px; margin-top: 7px; border-radius: 10px; }
+.is-app .gear-set label, .is-app .gear-set .chk { font-size: 10.5px; }
+.is-app #pfSave { height: 42px; min-height: 42px; font-size: 13.5px; margin-top: 8px; }
+
+/* ⚠️ 「품종 분류」 줄이 화면 오른쪽으로 삐져나가던 문제
+ * `.breed-ai > label` 이 flex 인데 줄바꿈이 막혀 있어(기본 nowrap) 라벨 + AI 칩이
+ * 폰 폭을 넘겼다. 줄바꿈을 허용하고 글자를 줄여 박스 안에 가둔다. */
+.is-app .breed-ai > label { flex-wrap: wrap; gap: 5px; font-size: 12px; }
+.is-app .breed-ai .ai-chip { font-size: 9.5px; padding: 2px 6px; }
+.is-app .breed-row { gap: 6px; margin-top: 7px; }
+.is-app .breed-row input { height: 36px; padding: 0 12px; font-size: 13px; }
+.is-app .breed-row .btn {
+  height: 36px; padding: 0 10px; font-size: 12px; white-space: nowrap; flex: none;
+}
+.is-app .breed-result { font-size: 11.5px; margin-top: 6px; }
+/* 어떤 자식도 제 내용 때문에 칸을 밀어내지 못하게 — 가로 삐짐의 근본 차단 */
+.is-app .pet-form-card *, .is-app .form-grid * { min-width: 0; }
+.is-app #pageHome, .is-app #pageResults { overflow-x: hidden; }
+
+/* 홈 아래쪽 안내 스트립 제거 — 너무 밑이라 안 보였다.
+ * 같은 문구를 도우미(buddy)가 화면 위에서 가로로 말해 준다(app.js mascotSay). */
+.is-app #pageHome > .guide-strip { display: none; }
+/* 준비물 체크는 2열 고정 — 글자 길이에 따라 3~4줄로 늘어지는 것을 막는다 */
+.is-app .gear-set { display: grid; grid-template-columns: 1fr 1fr; align-items: center; }
+.is-app .gear-set > :first-child { grid-column: 1 / -1; }
+
+/* ── 가로 화면(landscape): 세로로 길게 늘어놓을 이유가 없다 ────────
+ * 폰을 눕히면 높이가 400px 안팎이라 세로 배치로는 폼이 절대 한 화면에 안 들어간다.
+ * 입력칸을 4열로 펴서 "이름·종류·몸무게·크기"가 한 줄에 오게 한다. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .is-app .hero-inner { padding: 8px var(--page-x) 9px; }
+  .is-app .hero-title { font-size: 16px; }
+  .is-app .section { padding: 10px var(--page-x) 0; }
+  .is-app .section-head { margin-bottom: 6px; }
+  .is-app .section-head h2 { font-size: 15px; }
+  .is-app .pet-form-card { padding: 10px; }
+  .is-app .pf-head { margin-bottom: 7px; }
+  .is-app .pf-head-txt p { display: none; }
+  .is-app .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+  .is-app .gear-set { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .is-app .gear-set > :first-child { grid-column: auto; }
+  .is-app .cat-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+  .is-app .hc-photo { height: 72px; }
+}
+
+/* ── ③-2 HOT NOW: 검색창 바로 아래라 머리글·카드를 크게 줄인다 ────
+ * 그대로 두면 518px 이라 카테고리가 첫 화면 밖으로 밀려난다. */
+.is-app .hot-band .section-sub, .is-app .hot-sub, .is-app .hot-hint { display: none; }
+.is-app .hot-band { padding: 10px 0 12px; }
+.is-app .hot-head { gap: 8px; }
+.is-app .hot-head .section-eyebrow { margin-bottom: 2px; font-size: 10px; }
+.is-app .hot-title { font-size: 17px; }
+.is-app .hot-refresh { height: 32px; min-height: 32px; font-size: 11.5px; padding: 0 10px; }
+.is-app .hot-rail { margin-top: 8px; }
+.is-app .hot-card { width: 176px; border-radius: 12px; }
+.is-app .hc-photo { height: 96px; }
+.is-app .hc-rank { left: 8px; top: 8px; min-width: 22px; height: 22px; font-size: 11.5px; padding: 0 6px; }
+.is-app .hc-body { padding: 8px 10px 10px; }
+.is-app .hc-title { font-size: 12.5px; }
+.is-app .hc-meta { gap: 5px; margin-top: 4px; }
+.is-app .hc-rate { font-size: 12.5px; }
+.is-app .hc-rate .ic-star { width: 12px; height: 12px; }
+.is-app .hc-rc, .is-app .hc-addr { font-size: 10.5px; }
+.is-app .hc-addr { margin-top: 3px; }
+
+/* ── ④ SOURCE: 출처는 한 항목당 딱 한 줄 ─────────────────
+ * 공모전 심사에 필요한 표기라 지우지는 않고, 자리를 최소로 줄인다.
+ * 카드 3장(678px) → 한 줄짜리 3행(약 90px). 설명문은 앱에서 감춘다. */
+.is-app #secSrc { padding: 12px var(--page-x) 4px; }
+.is-app #secSrc .section-head { margin-bottom: 6px; }
+.is-app #secSrc .section-head h2 { font-size: 13px; }
+.is-app #secSrc .section-eyebrow { display: none; }
+/* 가로로 3칸 — 세로로 쌓으면 그것만 세 줄을 차지한다 */
+.is-app .src-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.is-app .src-item {
+  padding: 6px 5px; border-radius: 8px;
+  flex-direction: column; align-items: center; gap: 1px;
+  overflow: hidden; text-align: center;
+}
+.is-app .src-item i { font-size: 12px; line-height: 1.1; }
+.is-app .src-item b {
+  font-size: 9.5px; margin-top: 0; letter-spacing: -.05em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.is-app .src-item span { display: none; }   /* 긴 설명은 앱에서 생략 */
+
+/* ── ⑤ 좁은 폰에서 홈이 통째로 오른쪽으로 잘리던 문제 ─────────────
+ * 증상: 「내 반려동물 정보 등록」 카드·선택칸·노란 버튼·「정보 미입력」 배지가
+ *       화면 밖으로 나가 오른쪽이 싹둑 잘려 보였다(가로 320px 안팎 기기).
+ *
+ * 원인: #pageHome 이 세로 flex 다. flex 자식은 min-width 가 auto 라서
+ *       "내용이 요구하는 최소 폭"보다 작아지지 않는다. 그 최소 폭을 만든 범인이
+ *         · <input id="pfBreed">  — 입력칸의 기본 고유폭 186px
+ *         · .chk { white-space: nowrap } — 「케이지/이동가방/유모차」 한 줄 고정
+ *       이라, .section 의 최소 폭이 360px 로 굳어 320px 화면을 넘겼다.
+ *       넘친 부분은 overflow-x:hidden 에 그대로 잘렸다(스크롤도 안 된다).
+ *
+ * 해결: ① 섹션이 화면 폭까지 줄어들 수 있게 자동 최소크기를 푼다.
+ *       ② 그 안에서 줄어들 줄 모르던 두 곳(입력칸·체크박스 줄)을 접히게 한다.
+ * ───────────────────────────────────────────────────────────── */
+.is-app #pageHome > *,
+.is-app #pageResults > * { min-width: 0; }
+
+/* 품종 입력칸 — 기본 고유폭(약 186px)을 버리고 남는 만큼만 차지한다 */
+.is-app .breed-row { min-width: 0; }
+.is-app .breed-row input { flex: 1 1 0; min-width: 0; width: 100%; }
+
+/* 준비물 체크 — 두 칸 모두 0까지 줄어들 수 있게 하고, 긴 항목은 접는다.
+ * 자르지 않고 두 줄로 넘기는 쪽을 골랐다(「케이지/이동가방/유모차」가
+ * 「케이지/이동…」 으로 잘리면 무엇을 지참하라는 것인지 알 수 없다). */
+.is-app .gear-set { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.is-app .gear-set .chk {
+  min-width: 0; white-space: normal; line-height: 1.25;
+  align-items: flex-start;
+}
+.is-app .gear-set .chk input { flex: 0 0 auto; margin-top: 1px; }
+.is-app .gear-legend { min-width: 0; }
+
+/* 「정보 미입력」 배지 — 제목이 길어지면 배지가 카드 밖으로 밀려나갔다 */
+.is-app .pf-head { min-width: 0; }
+.is-app .pf-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 아주 좁은 화면(약 340px 미만)에서는 2열도 빠듯하다 — 한 열로 편다 */
+@media (max-width: 339px) {
+  .is-app .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .is-app .gear-set { grid-template-columns: minmax(0, 1fr); }
+  .is-app .cat-name { font-size: 10px; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 📱 앱 홈 재설계 (2026-08-18, v1.6)
+ *
+ * 그동안의 앱 홈은 "웹 지면을 눌러 담은 것"이었다. 한 화면에 넣으려고
+ * 글자를 11px 까지 줄이고 여백을 5px 로 조여서, 다 들어가긴 했지만
+ * 빽빽하고 읽기 힘들었다(사용자 표현: "너무 따닥따닥 붙어 있다").
+ *
+ * 방향을 바꾼다 — 줄여서 담지 말고, 덜어내서 담는다.
+ *   ① 홈에서 읽을 것을 줄인다: 광고 문구(제목·설명·예시칩)를 앱에서는 뺀다.
+ *      앱을 연 사람은 이미 이 앱이 무엇인지 안다. 상단바에 이름도 있다.
+ *   ② 429px 짜리 반려동물 등록 폼을 요약 한 줄 + 시트로 접는다(appshell.js).
+ *   ③ 그렇게 번 자리를 여백과 글자 크기에 되돌려 준다.
+ *      카테고리 5열(11px 글자) → 2열 큰 버튼(14.5px), 터치 목표 62px.
+ *
+ * 순서: 검색 → 우리 아이 → 카테고리 → 핫한 곳 → 출처
+ * 웹은 이 파일을 읽지 않는다(.is-app 스코프).
+ * ══════════════════════════════════════════════════════════════ */
+
+.is-app {
+  --gap-sec: 26px;        /* 섹션과 섹션 사이 — 한 곳에서 관리한다 */
+  --r-app: 16px;          /* 앱 카드 모서리 — 하나로 통일 */
+}
+
+/* ── 순서 재배치 ─────────────────────────────────────────── */
+.is-app #pageHome > .hero     { order: 1; }
+.is-app #pageHome > #secPet   { order: 2; }
+.is-app #pageHome > #secCat   { order: 3; }
+.is-app #pageHome > .hot-band { order: 4; }
+.is-app #pageHome > #secSrc   { order: 5; }
+
+.is-app #pageHome > #secPet,
+.is-app #pageHome > #secCat   { padding: var(--gap-sec) var(--page-x) 0; }
+.is-app #pageHome > .hot-band { padding: var(--gap-sec) 0 4px; }
+.is-app #pageHome > #secSrc   { padding: var(--gap-sec) var(--page-x) 8px; }
+
+/* ── ① 히어로: 사진 띠 + 그 아래 경계에 걸친 검색창 ────────
+ * 앱에서는 홍보 문구를 전부 뺀다. 남는 것은 "어디로 갈지 묻는 칸" 하나.
+ * 사진은 배경이 아니라 자기 자리를 가진 띠가 되고(스크림이 필요 없어진다),
+ * 검색창이 그 경계에 살짝 걸쳐 뜬다 — 앱에서 익숙한 형태다. */
+.is-app .hero {
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: visible;
+  background: var(--canvas); border-bottom: 0;
+}
+.is-app .hero::after { display: none; }        /* 사진 위 그라데이션 스크림 */
+.is-app .hero-photo {
+  position: static; flex: 0 0 auto;
+  width: 100%; height: 118px; opacity: 1;
+  object-fit: cover; object-position: center center;
+}
+.is-app .hero-inner {
+  position: relative; z-index: 2;
+  padding: 0 var(--page-x);
+  margin-top: -26px;                            /* 사진 아래 경계에 걸치기 */
+}
+.is-app .hero .eyebrow,
+.is-app .hero-title,
+.is-app .hero-lead { display: none; }
+
+.is-app .ai-bar {
+  margin: 0; padding: 6px 6px 6px 16px;
+  border-width: 1.5px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(20, 20, 25, .10);
+}
+.is-app .ai-bar input { font-size: 15px; padding: 12px 0; }
+.is-app .ai-bar-btn { padding: 11px 18px; font-size: 14px; min-height: 42px; }
+.is-app .ai-bar-icon .pet-logo { width: 22px; height: 22px; }
+
+/* ── ② 우리 아이 정보: 429px 폼 → 한 줄 카드 ──────────────
+ * 카드는 "지금 상태"만 말한다. 고치는 일은 시트에서 한다. */
+.is-app #secPet .pet-entry {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 68px; padding: 12px 14px;
+  border: 1.5px solid var(--hairline); border-radius: var(--r-app);
+  background: var(--canvas); box-shadow: var(--shadow-sm);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.is-app #secPet .pet-entry:active { background: var(--cloud); }
+.is-app #secPet .pf-avatar { width: 42px; height: 42px; flex: 0 0 auto; }
+.is-app #secPet .pf-avatar img, .is-app #secPet .pf-avatar .ic { width: 26px; height: 26px; }
+.is-app .pe-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.is-app .pe-txt b {
+  font-size: 15px; font-weight: 700; letter-spacing: -.02em; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 상태 배지는 카드 안에서 알약을 벗고 한 줄 설명이 된다 */
+.is-app #secPet .pf-state {
+  padding: 0; border: 0; background: none;
+  font-size: 12.5px; font-weight: 500; color: var(--mute);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.is-app #secPet .pf-state.on { background: none; color: #4a4a52; font-weight: 600; }
+/* 오른쪽 꺾쇠 — 아이콘을 새로 만들지 않고 테두리 두 변으로 그린다 */
+.is-app .pe-go {
+  flex: 0 0 auto; width: 9px; height: 9px; margin-right: 4px;
+  border-top: 2px solid var(--mute); border-right: 2px solid var(--mute);
+  transform: rotate(45deg); opacity: .75;
+}
+
+/* ── ③ 카테고리: 5열 작은 타일 → 2열 큰 버튼 ──────────────
+ * 10칸을 한 줄에 다섯씩 밀어 넣으려다 이름이 11px 까지 내려가 있었다.
+ * 두 칸으로 펴면 글자가 커지고 손가락이 닿는 면도 62px 로 넓어진다. */
+.is-app #secCat .section-head { margin-bottom: 12px; }
+.is-app #secCat .section-eyebrow { display: none; }   /* "CATEGORY" 는 제목과 같은 말 */
+.is-app #secCat .section-head h2 { font-size: 18px; }
+.is-app #secCat .section-sub { font-size: 12.5px; margin-left: auto; flex-basis: auto; }
+
+.is-app .cat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.is-app .cat-btn {
+  display: flex; flex-direction: row; align-items: center; gap: 11px;
+  min-height: 58px; padding: 9px 12px;
+  border-radius: var(--r-app); border-width: 1.5px;
+  box-shadow: none; text-align: left;
+}
+.is-app .cat-btn:active { background: var(--cloud); transform: none; }
+.is-app .cat-btn > .cat-ic {
+  flex: 0 0 auto; margin: 0;
+  width: 36px; height: 36px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--banana-soft, #FFF7CC);
+}
+.is-app .cat-ic .ic { width: 20px; height: 20px; }
+.is-app .cat-btn > .cat-name {
+  flex: 1; min-width: 0;
+  font-size: 14.5px; font-weight: 700; letter-spacing: -.03em; line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 「8,654곳」 같은 칸별 숫자는 뺀다 — 고를 때 쓰는 정보가 아니고,
+ * 전체 규모는 제목 옆 「전국 85,452곳」이 이미 말해 준다. */
+.is-app .cat-btn > .cat-total { display: none; }
+.is-app .cat-real { display: none; }
+
+/* ── ④ 핫한 곳: 머리글만 정리, 카드는 조금 크게 ──────────── */
+.is-app .hot-head { padding: 0 var(--page-x); }
+.is-app .hot-head .section-eyebrow { display: none; }
+.is-app .hot-title { font-size: 18px; }
+.is-app .hot-rail { margin-top: 12px; }
+.is-app .hot-card { width: 190px; }
+.is-app .hc-photo { height: 108px; }
+
+/* ── ⑤ 출처: 공모전 심사에 필요한 표기라 남기되 가장 조용하게 ──
+ * 카드 3장(78px)이던 것을 회색 글씨 두 줄로 줄인다. 표기 의무는 그대로 지키고
+ * 화면에서는 각주만큼만 자리를 쓴다. */
+.is-app #secSrc .section-head { margin-bottom: 5px; }
+.is-app #secSrc .section-head h2 { font-size: 11.5px; color: var(--mute); font-weight: 600; letter-spacing: 0; }
+.is-app .src-list { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.is-app .src-item {
+  flex: 0 0 auto; flex-direction: row; align-items: baseline; gap: 4px;
+  background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0;
+  overflow: visible;
+}
+.is-app .src-item i { font-size: 11px; font-weight: 600; color: var(--mute); letter-spacing: -.02em; }
+.is-app .src-item b {
+  font-size: 11px; font-weight: 500; color: var(--mute); margin: 0;
+  letter-spacing: -.02em; white-space: nowrap;
+}
+.is-app .src-item span { display: none; }
+
+/* ── 🐶 우리 아이 정보 시트 ──────────────────────────────── */
+/* display:none 대신 visibility 로 감춘다 — display 가 바뀌는 순간에는
+ * 시작 프레임이 없어 transition 이 아예 돌지 않는다(툭 하고 나타난다). */
+.pet-sheet {
+  position: fixed; inset: 0; z-index: 1100;
+  visibility: hidden; transition: visibility 0s linear .22s;
+}
+.pet-sheet.show { visibility: visible; transition-delay: 0s; }
+.pet-sheet .ps-scrim {
+  position: absolute; inset: 0;
+  background: rgba(20, 20, 25, .42);
+  opacity: 0; transition: opacity .18s var(--ease);
+}
+.pet-sheet.show .ps-scrim { opacity: 1; }
+.pet-sheet .ps-panel {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  max-height: calc(100% - 40px);
+  display: flex; flex-direction: column;
+  background: var(--canvas);
+  border-radius: 20px 20px 0 0;
+  padding-bottom: var(--safe-bottom);
+  /* ⚠️ @keyframes 로 올리면 안 된다 — 애니메이션이 한 프레임도 못 돌면
+   * (화면이 합성되지 않는 상황) 시작 상태인 화면 밖에 그대로 멈춘다.
+   * transition 은 안 돌아도 끝값이 그냥 적용되므로 시트가 반드시 보인다. */
+  transform: translateY(100%);
+  transition: transform .22s var(--ease);
+}
+.pet-sheet.show .ps-panel { transform: translateY(0); }
+.pet-sheet .ps-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.pet-sheet .ps-head b { flex: 1; min-width: 0; font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
+.pet-sheet .ps-close {
+  flex: 0 0 auto; width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: var(--cloud);
+  color: var(--ink); cursor: pointer;
+}
+.pet-sheet .ps-close .ic { width: 17px; height: 17px; }
+.pet-sheet .ps-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 18px; }
+/* 시트 자체가 이미 카드라 안쪽 카드는 테두리를 한 겹 벗는다 */
+.pet-sheet .pet-form-card { background: none; border: 0; box-shadow: none; padding: 0; }
+/* 시트는 자리가 넉넉하니 홈에서 조였던 입력칸 높이를 되돌린다 */
+.pet-sheet .form-grid { gap: 11px; }
+.pet-sheet .form-grid label, .pet-sheet .pet-form-card label { font-size: 12px; }
+.pet-sheet .pet-form-card input[type="text"],
+.pet-sheet .pet-form-card input[type="number"],
+.pet-sheet .pet-form-card select { height: 44px; min-height: 44px; font-size: 15px; }
+.pet-sheet .breed-row input { height: 44px; }
+.pet-sheet .breed-row .btn { height: 44px; font-size: 13px; }
+.pet-sheet .gear-set { gap: 9px 10px; padding: 11px 12px; }
+.pet-sheet .gear-set label, .pet-sheet .gear-set .chk { font-size: 12.5px; }
+.pet-sheet #pfSave { height: 50px; min-height: 50px; font-size: 15px; margin-top: 14px; }
+/* 시트가 떠 있는 동안 뒤 화면은 스크롤되지 않는다 */
+.ps-open, .ps-open body { overflow: hidden; }
+
+/* ── ⑥ 홈 위에 겹치는 것 정리 ─────────────────────────────
+ * 도우미 첫 인사가 다섯 줄 · 22초라 카테고리 버튼을 덮고 있었다.
+ * 인사 자체는 buddy.js 에서 앱일 때 짧게(두 줄 · 7초) 바꿨다. */
+
+/* 「핫한 곳」 머리글 — 지역·카테고리 고르개와 새로고침이 제목만큼 커서
+ * 줄이 복잡했다. 고르개는 남기고 무게만 낮춘다. */
+.is-app .hot-head { gap: 8px; align-items: center; }
+.is-app .hot-pick {
+  border-width: 1.5px; padding: 3px 12px 4px;
+  font-size: 13.5px; font-weight: 700; letter-spacing: -.02em;
+}
+.is-app .hot-caret { border-width: 4px; margin-top: 4px; }
+.is-app .hot-title { gap: 7px; }
+.is-app .hot-refresh { padding: 0 10px; height: 32px; min-height: 32px; font-size: 12px; }
+.is-app .hot-refresh .ic { width: 14px; height: 14px; }
+
+/* ══════════════════════════════════════════════════════════════
+ * 📱 앱 홈 2차 정리 (2026-08-18, v1.7)
+ * ══════════════════════════════════════════════════════════════ */
+
+/* ── ⓪ 섹션이 화면 폭을 다 쓰게 ────────────────────────────
+ * 「우리 아이 정보」 카드와 카테고리 격자가 가운데에 좁게 몰려 있었다.
+ * 범인은 웹용 `.section { margin: 0 auto }` — 세로 flex 안에서 좌우 auto 마진은
+ * 남는 자리를 마진이 먹어 치우기 때문에 늘어나지(stretch) 않고 내용 크기로 줄어든다.
+ * 예전엔 안쪽 내용(큰 폼·5열 격자)이 넓어서 티가 안 났을 뿐이다. */
+.is-app #pageHome > .section { margin-left: 0; margin-right: 0; }
+
+/* ── ① 히어로: 큰 제목을 빼고 배너 빈자리에 설명 두 줄 ────
+ * 상단바 바로 밑에 배너가 딱 붙어 답답했다 → 6px 만 띄운다. */
+.is-app .hero { padding-top: 6px; position: relative; }
+.is-app .hero-photo { height: 140px; }
+
+/* 그림의 왼쪽 빈 자리(약 60%)에 글자를 얹는다.
+ * 이미지에 글자를 굽지 않는 이유 — 영어로 바꿔도 같이 바뀌어야 하고,
+ * 기기 해상도가 달라도 또렷해야 한다. */
+.is-app .hero-copy {
+  position: absolute; z-index: 2;
+  /* 오른쪽 끝을 화면 폭의 62%로 묶는다(width 로 주면 왼쪽 여백이 더해져
+   * 좁은 기기에서 글자가 강아지·고양이 위로 올라탄다) */
+  left: var(--page-x); right: 38%; top: 6px; height: 140px;
+  display: flex; flex-direction: column; justify-content: center; gap: 7px;
+  pointer-events: none;
+}
+.is-app .hero-copy .eyebrow {
+  display: inline-block; align-self: flex-start;
+  padding: 3px 9px; border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, .72);
+  color: #3B3320; font-size: 10px; font-weight: 800;
+  letter-spacing: -.01em; text-transform: none; line-height: 1.35;
+}
+.is-app .hero-copy .hero-lead {
+  display: block; margin: 0; max-width: 100%;
+  color: #4A4230; font-size: 12px; font-weight: 600;
+  line-height: 1.4; letter-spacing: -.02em;
+}
+/* 큰 제목은 앱에서 하는 말이 없다 — 자리만 차지했다 */
+.is-app .hero-title { display: none; }
+
+.is-app .hero-inner { margin-top: -26px; }
+
+/* ── ② 우리 아이 정보 카드 키우기 ──────────────────────── */
+.is-app #secPet .pet-entry { min-height: 78px; padding: 14px 16px; gap: 14px; }
+.is-app #secPet .pf-avatar { width: 48px; height: 48px; }
+.is-app #secPet .pf-avatar img, .is-app #secPet .pf-avatar .ic { width: 30px; height: 30px; }
+.is-app .pe-txt { gap: 4px; }
+.is-app .pe-txt b { font-size: 16px; }
+.is-app #secPet .pf-state { font-size: 13px; }
+.is-app .pe-go { width: 10px; height: 10px; border-width: 2.5px; }
+
+/* ── ③ 카테고리: 「펫카페·식당」을 빼고 9칸 3×3 ──────────
+ * 「펫카페·식당」(853곳)은 「식당·카페」와 겹쳐 읽혀 고를 때 헷갈렸다.
+ * 목록·지도·검색에서는 그대로 살아 있고 홈 격자에서만 뺀다. */
+.is-app .cat-btn[data-go="culture:cafe"] { display: none; }
+.is-app .cat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.is-app .cat-btn {
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 84px; padding: 12px 6px; text-align: center;
+}
+.is-app .cat-btn > .cat-ic { width: 40px; height: 40px; border-radius: 12px; }
+.is-app .cat-ic .ic { width: 22px; height: 22px; }
+.is-app .cat-btn > .cat-name {
+  flex: 0 0 auto; width: 100%; text-align: center;
+  font-size: 12.5px; letter-spacing: -.045em;
+}
+
+/* 제목줄도 격자와 같은 폭 안에서 양끝으로 */
+.is-app #secCat .section-head { justify-content: space-between; gap: 8px; }
+.is-app #secCat .section-head h2 { font-size: 19px; }
+.is-app #secCat .section-sub { font-size: 13px; }

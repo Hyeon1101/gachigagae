@@ -1,0 +1,10 @@
+{
+  "name": "같이가개 — 반려동물 동반 여행 가이드",
+  "short_name": "같이가개",
+  "description": "반려동물 동반 조건을 정확히 해석해 헛걸음을 방지하는 여행 가이드",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#111111",
+  "lang": "ko"
+}

@@ -1,0 +1,244 @@
+[
+ {
+  "contentid": "demo-f04",
+  "title": "스타벅스 더북한강R점",
+  "contenttypeid": "39",
+  "addr1": "경기도 남양주시 조안면 북한강로 856",
+  "tel": "1522-3232",
+  "mapx": 127.323,
+  "mapy": 37.5586,
+  "firstimage": "",
+  "verified": true,
+  "source": "언론 보도·매장 공식 안내 기반 (방문 전 재확인 권장)",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (국내 최초 반려동물 동반 가능 스타벅스)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "리드줄(목줄) 착용 필수, 보호자 동반",
+   "etcAcmpyInfo": "지정된 펫 존(Pet Zone)에서만 동반 가능, 펫 존 외 매장 내부 이동 불가",
+   "relaPosesFclty": "야외 펫 존, 펫 전용 놀이터",
+   "relaFrnshPrdlst": "물그릇",
+   "relaPurcPrdlst": "펫 전용 음료(퍼푸치노)",
+   "relaAcdntRiskMtr": "맹견은 입마개 착용 필수"
+  }
+ },
+ {
+  "contentid": "demo-a01",
+  "title": "서울숲",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 성동구 뚝섬로 273",
+  "tel": "02-460-2905",
+  "mapx": 127.0374,
+  "mapy": 37.5444,
+  "firstimage": "",
+  "verified": true,
+  "source": "서울시 공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "목줄(2m 이내) 착용 필수, 배변봉투 지참·배변 수거",
+   "etcAcmpyInfo": "곤충식물원 등 실내 시설과 습지생태원 일부 구역 출입 불가, 맹견 출입 제한",
+   "relaPosesFclty": "넓은 잔디밭, 산책로",
+   "relaAcdntRiskMtr": "자전거 도로 횡단 시 주의"
+  }
+ },
+ {
+  "contentid": "demo-a02",
+  "title": "올림픽공원",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 송파구 올림픽로 424",
+  "tel": "02-410-1114",
+  "mapx": 127.1216,
+  "mapy": 37.5209,
+  "firstimage": "",
+  "verified": true,
+  "source": "공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "목줄 착용 필수, 배변봉투 지참",
+   "etcAcmpyInfo": "실내 경기장·전시관 출입 불가, 잔디마당 일부 보호 구역 제한",
+   "relaPosesFclty": "산책로, 넓은 녹지",
+   "relaAcdntRiskMtr": "행사 기간 인파 혼잡 주의"
+  }
+ },
+ {
+  "contentid": "demo-a03",
+  "title": "반포한강공원",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 서초구 신반포로11길 40",
+  "tel": "02-3780-0541",
+  "mapx": 126.9958,
+  "mapy": 37.51,
+  "firstimage": "",
+  "verified": true,
+  "source": "한강공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "동반가능",
+   "acmpyNeedMtr": "목줄(2m 이내) 착용, 배변 수거 필수",
+   "etcAcmpyInfo": "맹견 5종은 입마개 착용 필수",
+   "relaPosesFclty": "산책로, 잔디밭",
+   "relaAcdntRiskMtr": "자전거·킥보드 통행 구간 주의, 여름철 수변 안전 주의"
+  }
+ },
+ {
+  "contentid": "demo-a04",
+  "title": "북서울꿈의숲",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 강북구 월계로 173",
+  "tel": "02-2289-4001",
+  "mapx": 127.0429,
+  "mapy": 37.6207,
+  "firstimage": "",
+  "verified": true,
+  "source": "서울시 공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "목줄 착용 필수, 배변봉투 지참",
+   "etcAcmpyInfo": "미술관·전망대 등 실내 시설 출입 불가",
+   "relaPosesFclty": "산책로, 잔디광장",
+   "relaAcdntRiskMtr": "월영지 주변 수변 주의"
+  }
+ },
+ {
+  "contentid": "demo-a05",
+  "title": "남산공원 북측순환로",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 중구 삼일대로 231",
+  "tel": "02-3783-5900",
+  "mapx": 126.9902,
+  "mapy": 37.5539,
+  "firstimage": "",
+  "verified": true,
+  "source": "서울시 공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "목줄 착용 필수, 배변봉투 지참",
+   "etcAcmpyInfo": "N서울타워 내부 등 실내 시설 출입 불가, 케이블카 탑승 시 케이지 필요",
+   "relaPosesFclty": "완만한 순환 산책로",
+   "relaAcdntRiskMtr": "관광객 인파 혼잡 구간 주의"
+  }
+ },
+ {
+  "contentid": "demo-a06",
+  "title": "석촌호수공원",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 송파구 잠실로 148",
+  "tel": "02-412-0190",
+  "mapx": 127.1042,
+  "mapy": 37.5094,
+  "firstimage": "",
+  "verified": true,
+  "source": "공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "동반가능",
+   "acmpyNeedMtr": "목줄 착용 필수, 배변 수거",
+   "etcAcmpyInfo": "벚꽃축제 등 행사 기간 혼잡 시 동반 자제 권고",
+   "relaPosesFclty": "호수 둘레 산책로 2.5km",
+   "relaAcdntRiskMtr": "러닝 트랙 이용자와 동선 겹침 주의"
+  }
+ },
+ {
+  "contentid": "demo-a07",
+  "title": "경의선숲길 (연남동 구간)",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 마포구 연남동",
+  "tel": "",
+  "mapx": 126.925,
+  "mapy": 37.5609,
+  "firstimage": "",
+  "verified": true,
+  "source": "서울시 공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "동반가능",
+   "acmpyNeedMtr": "목줄 착용 필수, 배변봉투 지참",
+   "etcAcmpyInfo": "인근 상점 출입 규정은 상점별 상이",
+   "relaPosesFclty": "선형 산책로",
+   "relaAcdntRiskMtr": "주말 인파 혼잡 주의"
+  }
+ },
+ {
+  "contentid": "demo-a08",
+  "title": "월드컵공원 (평화의공원)",
+  "contenttypeid": "12",
+  "addr1": "서울특별시 마포구 증산로 32",
+  "tel": "02-300-5500",
+  "mapx": 126.8973,
+  "mapy": 37.5709,
+  "firstimage": "",
+  "verified": true,
+  "source": "서울시 공원 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (목줄 착용 시)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "목줄 착용 필수, 배변봉투 지참",
+   "etcAcmpyInfo": "하늘공원·노을공원 일부 생태보호 구역은 반려동물 출입 제한",
+   "relaPosesFclty": "잔디광장, 산책로",
+   "relaAcdntRiskMtr": "생태보호 구역 경계 표지 확인"
+  }
+ },
+ {
+  "contentid": "demo-m01",
+  "title": "스타필드 하남",
+  "contenttypeid": "38",
+  "addr1": "경기도 하남시 미사대로 750",
+  "tel": "1833-9001",
+  "mapx": 127.2231,
+  "mapy": 37.5459,
+  "firstimage": "",
+  "verified": true,
+  "source": "매장 공식 안내 기반 (방문 전 재확인 권장)",
+  "pet": {
+   "acmpyPsblCpam": "전 견종 (반려견 동반 쇼핑몰)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "목줄(리드줄) 착용 필수 또는 유모차·케이지 이용",
+   "etcAcmpyInfo": "식품관·일부 매장은 동반 불가 구역, 매장별 규정 상이",
+   "relaPosesFclty": "펫 파킹존, 반려동물 편의시설",
+   "relaAcdntRiskMtr": "에스컬레이터 이용 시 안아서 이동 권장"
+  }
+ },
+ {
+  "contentid": "demo-m02",
+  "title": "IFC몰 여의도",
+  "contenttypeid": "38",
+  "addr1": "서울특별시 영등포구 국제금융로 10",
+  "tel": "02-6137-5000",
+  "mapx": 126.9254,
+  "mapy": 37.5251,
+  "firstimage": "",
+  "verified": true,
+  "source": "매장 공식 안내 기반 (방문 전 재확인 권장)",
+  "pet": {
+   "acmpyPsblCpam": "개, 고양이 (도그 프렌들리 몰)",
+   "acmpyTypeCd": "부분동반",
+   "acmpyNeedMtr": "목줄 착용 또는 이동가방·유모차 이용",
+   "etcAcmpyInfo": "F&B 매장 등 일부 구역 동반 불가, 매장 입구 스티커 확인",
+   "relaPosesFclty": "펫 프렌들리 안내 스티커",
+   "relaAcdntRiskMtr": "혼잡 시간대 유모차 이용 권장"
+  }
+ },
+ {
+  "contentid": "demo-r01",
+  "title": "보라매공원 반려견놀이터",
+  "contenttypeid": "28",
+  "addr1": "서울특별시 동작구 여의대방로20길 33",
+  "tel": "02-2181-1181",
+  "mapx": 126.9195,
+  "mapy": 37.4939,
+  "firstimage": "",
+  "verified": true,
+  "source": "서울시 반려견놀이터 이용수칙 기반",
+  "pet": {
+   "acmpyPsblCpam": "반려견 (소형견·대형견 구역 분리 운영)",
+   "acmpyTypeCd": "동반가능",
+   "acmpyNeedMtr": "동물등록증(동물등록 완료) 확인, 입장 전 목줄 착용, 배변 수거",
+   "etcAcmpyInfo": "맹견 및 발정기·질병 반려견 입장 불가, 놀이터 내에서는 목줄 해제 가능",
+   "relaPosesFclty": "음수대, 그늘막, 어질리티 기구",
+   "relaAcdntRiskMtr": "다견 간 다툼 주의, 보호자 상시 관찰"
+  }
+ }
+]

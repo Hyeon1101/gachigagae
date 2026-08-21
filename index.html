@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>같이가개 — 반려동물 동반 여행 가이드</title>
+<meta name="description" content="AI가 알려주는 반려동물 동반 가능 장소. 출입 조건을 정확히 해석해 헛걸음을 막아주는 여행 가이드">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="manifest" href="manifest.json">
+<!-- 파비콘 = 브랜드 마크(핀 속 발자국)와 동일 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 31s11-9.6 11-17.8A11 11 0 0 0 5 13.2C5 21.4 16 31 16 31z' fill='%23111'/%3E%3Cellipse cx='11.4' cy='10.6' rx='1.6' ry='2.1' fill='%23fff'/%3E%3Cellipse cx='15.9' cy='9' rx='1.6' ry='2.2' fill='%23fff'/%3E%3Cellipse cx='20.4' cy='10.6' rx='1.6' ry='2.1' fill='%23fff'/%3E%3Cpath d='M15.9 13.6c2.4 0 4.2 1.8 4.2 3.7 0 1.5-1.2 2.4-2.6 2.4-1 0-1.2-.4-1.6-.4s-.6.4-1.6.4c-1.4 0-2.6-.9-2.6-2.4 0-1.9 1.8-3.7 4.2-3.7z' fill='%23fff'/%3E%3C/svg%3E">
+<!-- Pretendard = 한글에서 SF Pro/Inter에 가장 가까운 대체 서체. 없으면 시스템 폰트로 폴백 -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="css/style.css">
+<!-- 안드로이드 앱(Capacitor)에서만 켜지는 레이어 — 웹에는 영향 없음 -->
+<link rel="stylesheet" href="css/app.css">
+<!-- 화면을 따라다니는 도우미 마스코트 -->
+<link rel="stylesheet" href="css/buddy.css">
+<!-- ❤️ 즐겨찾기 · 로그인 레이어 — 기존 스타일을 덮지 않는 추가 전용 -->
+<link rel="stylesheet" href="css/fav.css">
+</head>
+<body>
+
+<!-- ═══ 상단바 ═══ -->
+<header class="topbar">
+  <button class="brand" id="brandHome">
+    <span class="brand-mark" data-mark></span>
+    <span class="brand-text">
+      <b>같이가개</b>
+      <small>PET TRAVEL GUIDE</small>
+    </span>
+  </button>
+  <nav class="nav">
+    <button class="nav-btn active" data-page="home" data-i18n="nav.home">홈</button>
+    <button class="nav-btn" data-page="results" data-i18n="nav.list">목록</button>
+    <button class="nav-btn" data-page="map" data-i18n="nav.map">지도</button>
+    <button class="nav-btn" data-page="tips" data-i18n="nav.tips">반려동물 팁</button>
+  </nav>
+  <div class="top-tools">
+    <!-- 📍 어느 화면에서든 한 번에 지역을 바꾼다 (목록 셀렉트를 찾아갈 필요 없음) -->
+    <button id="regionBtn" class="region-btn" data-i18n-title="top.regionTitle" aria-haspopup="true" aria-expanded="false">
+      <i data-ic="pin"></i><b id="regionBtnName">서울</b><span class="rb-caret"></span>
+    </button>
+    <!-- ❤️ 저장한 곳 — 로그인 없이도 이 기기에 그대로 쌓인다 -->
+    <button id="favBtn" class="fav-top-btn" data-i18n-title="fav.btnTitle" title="저장한 장소 보기"
+            aria-haspopup="true" aria-expanded="false">
+      <i data-ic="heart"></i><span id="favCount" class="fav-badge hidden">0</span>
+    </button>
+    <button id="langBtn" class="lang-btn" data-i18n="top.langBtn" data-i18n-title="top.langTitle">English</button>
+    <button id="profileBtn" class="btn btn-primary btn-sm"><span data-logo="sm"></span> <span data-i18n="top.mypet">내 반려동물</span></button>
+  </div>
+</header>
+
+<!-- 지역 선택 팝오버 — 상단바 어디서든 열린다 -->
+<div id="regionPop" class="region-pop hidden" role="dialog" aria-modal="false">
+  <div class="rp-head">
+    <b data-i18n="region.pick">지역 선택</b>
+    <button id="regionPopClose" class="rp-close" data-i18n-title="ai.close"><i data-ic="close"></i></button>
+  </div>
+  <div class="rp-grid" id="regionPopGrid"></div>
+</div>
+
+<!-- ❤️ 즐겨찾기 칸 — 저장한 곳이 모이는 자리.
+     비로그인이면 이 기기에, 구글 로그인 상태면 그 계정 칸에 쌓인다(둘 다 서버 없이 동작) -->
+<div id="favPop" class="fav-pop hidden" role="dialog" aria-modal="false" aria-labelledby="favPopTitle">
+  <div class="rp-head">
+    <b id="favPopTitle" data-i18n="fav.title">즐겨찾기</b>
+    <span id="favPopCount" class="fav-pop-count"></span>
+    <button id="favPopClose" class="rp-close" data-i18n-title="ai.close"><i data-ic="close"></i></button>
+  </div>
+  <div id="favBody" class="fav-body"></div>
+</div>
+
+<div id="demoBanner" class="demo-banner hidden">
+  <i data-ic="warn"></i> <span data-i18n-html="demo.text"></span>
+</div>
+
+<!-- ═══ 홈 ═══ -->
+<section id="pageHome" class="page">
+
+  <!-- 편집형 히어로: 사진을 전면에 깔고 제목을 그 위에 태워 넣는다 -->
+  <div class="hero">
+    <img class="hero-photo" src="assets/hero-dog.jpg" fetchpriority="high" decoding="async" alt="노란 꽃밭에서 뛰어노는 귀여운 강아지들">
+    <div class="hero-inner">
+      <span class="eyebrow"><span data-i18n="hero.eyebrowA">공공데이터</span> <b data-grand>85,452</b><span data-i18n="hero.eyebrowB">곳 · 출입 규정 자동 판정</span></span>
+      <h1 class="hero-title" data-i18n-html="hero.title">반려동물과 <br> 떠나는 <br> 행복한 하루</h1>
+      <p class="hero-lead" data-i18n="hero.lead">어디든 같이가개! 반려동물 입장 가능한 곳만 모아 알려드려요.</p>
+
+      <form class="ai-bar" id="aiForm">
+        <span class="ai-bar-icon" data-logo="sm"></span>
+        <input id="aiInput" type="text" autocomplete="off" data-i18n-ph="hero.ph"
+               placeholder="예) 소형견이랑 갈 만한 서울 실내 카페 알려줘">
+        <button type="submit" class="ai-bar-btn" data-i18n="hero.search">검색</button>
+      </form>
+
+      <div class="ai-examples">
+        <button class="ex-chip" data-q="대형견도 들어갈 수 있는 제주도 관광지 알려줘"
+                data-q-en="Tell me attractions in Jeju that welcome large dogs" data-i18n="ex.1">대형견 제주 관광지</button>
+        <button class="ex-chip" data-q="서울에서 반려동물이랑 실내에서 밥 먹을 수 있는 곳"
+                data-q-en="Places in Seoul where I can eat indoors with my pet" data-i18n="ex.2">서울 실내 식당</button>
+        <button class="ex-chip" data-q="경기도 반려견 동반 펜션 추천해줘"
+                data-q-en="Recommend pet-friendly stays in Gyeonggi-do" data-i18n="ex.3">경기 동반 펜션</button>
+        <button class="ex-chip" data-q="우리 강아지는 시츄인데 어떤 점을 조심해야 해?"
+                data-q-en="My dog is a Shih Tzu — what should I watch out for?" data-i18n="ex.4">시츄 주의사항</button>
+        <button class="ex-chip chip-reset" id="homeResetBtn" data-i18n-title="ex.resetTitle"><i data-ic="refresh"></i> <span data-i18n="ex.reset">초기화</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 히어로에 걸치는 가이드 스트립 — 마스코트가 말하는 자리 -->
+  <div class="guide-strip">
+    <img id="heroMascot" class="guide-mascot" src="assets/helper_dog.png" alt="도우미 마스코트">
+    <div id="heroBubble" class="guide-say" data-i18n-html="guide.hello">
+      안녕! 나는 여행 도우미 <b>가개</b>야<br>
+      어디로 갈지 물어보면 딱 맞는 곳을 찾아줄게!
+    </div>
+  </div>
+
+  <!-- ═══ 📍 지역 빠른 선택 — 클릭 한 번으로 전체 화면의 지역이 바뀐다 ═══ -->
+  <div class="section region-quick">
+    <div class="section-head">
+      <span class="section-eyebrow" data-i18n="region.eyebrow">REGION</span>
+      <h2 data-i18n="region.title">지역 먼저 고르기</h2>
+      <span class="section-sub" data-i18n="region.sub">고른 지역이 목록 · 지도 · 아래 핫플레이스에 한 번에 적용돼요</span>
+    </div>
+    <div class="area-rail" id="areaRail"></div>
+  </div>
+
+  <!-- ═══ 🐶 내 반려동물 정보 (판정의 출발점) ═══ -->
+  <div class="section" id="secPet">
+    <div class="pet-form-card" id="petForm">
+      <div class="pf-head">
+        <span class="pf-avatar" id="pfAvatar" data-logo="md"></span>
+        <div class="pf-head-txt">
+          <h2 data-i18n="pf.title">내 반려동물 정보 등록</h2>
+          <p data-i18n="pf.sub">우리 아이 맞춤 출입 규정 자동 판정 및 헛걸음 방지</p>
+        </div>
+        <span class="pf-state" id="pfState" data-i18n="pf.stateEmpty">정보 미입력</span>
+      </div>
+
+      <div class="breed-ai">
+        <label><span data-logo="xs"></span> <span data-i18n="pf.breedLabel">품종으로 자동 입력</span> <span class="ai-chip" data-i18n="pf.aiChip">AI 자동 분류</span></label>
+        <div class="breed-row">
+          <input id="pfBreed" type="text" data-i18n-ph="pf.breedPh" placeholder="예: 시츄, 골든리트리버, 코리안숏헤어">
+          <button type="button" id="pfBreedBtn" class="btn btn-primary btn-sm"><i data-ic="search"></i> <span data-i18n="pf.breedBtn">품종 분류</span></button>
+        </div>
+        <div id="breedResult" class="breed-result hidden"></div>
+      </div>
+
+      <div class="form-grid">
+        <label><span data-i18n="pf.name">이름</span> <input id="pfName" type="text" data-i18n-ph="pf.namePh" placeholder="예: 콩이"></label>
+        <label><span data-i18n="pf.species">종류</span>
+          <select id="pfSpecies">
+            <option value="dog" selected data-i18n="pf.dog">강아지</option>
+            <option value="cat" data-i18n="pf.cat">고양이</option>
+            <option value="other" data-i18n="pf.other">기타</option>
+          </select>
+        </label>
+        <label><span data-i18n="pf.weight">몸무게 (kg)</span> <input id="pfWeight" type="number" min="0.5" max="90" step="0.1" value="5"></label>
+        <label><span data-i18n="pf.size">크기 구분</span>
+          <select id="pfSize">
+            <option value="auto" selected data-i18n="pf.sizeAuto">몸무게로 자동 판정</option>
+            <option value="small" data-i18n="pf.small">소형견 (10kg 미만)</option>
+            <option value="medium" data-i18n="pf.medium">중형견 (10 ~ 25kg)</option>
+            <option value="large" data-i18n="pf.large">대형견 (25kg 이상)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="gear-set">
+        <span class="gear-legend"><i data-ic="kit"></i> <span data-i18n="pf.gear">지참 가능한 준비물</span></span>
+        <label class="chk"><input type="checkbox" id="pfLeash" checked> <span data-i18n="pf.leash">목줄/리드줄 (2m 이내)</span></label>
+        <label class="chk"><input type="checkbox" id="pfCage"> <span data-i18n="pf.cage">케이지/이동가방/유모차</span></label>
+        <label class="chk"><input type="checkbox" id="pfMuzzle"> <span data-i18n="pf.muzzle">입마개</span></label>
+        <label class="chk"><input type="checkbox" id="pfVaccine" checked> <span data-i18n="pf.vaccine">예방접종 완료</span></label>
+      </div>
+
+      <button id="pfSave" class="btn btn-primary btn-block"><span data-logo="sm"></span> <span data-i18n="pf.save">정보 저장 및 맞춤 장소 판정하기</span></button>
+    </div>
+  </div>
+
+  <div class="section" id="secCat">
+    <div class="section-head">
+      <span class="section-eyebrow" data-i18n="cat.eyebrow">CATEGORY</span>
+      <h2 data-i18n="cat.title">카테고리로 찾기</h2>
+      <span class="section-sub"><span data-i18n="cat.subA">전국</span> <b data-grand>85,452</b><span data-i18n="cat.subB">곳</span></span>
+    </div>
+    <div id="catGrid" class="cat-grid"></div>
+  </div>
+
+  <!-- 화이트 라이트 편집 밴드 -->
+  <div class="band">
+    <img class="band-photo" src="assets/band-night.jpg" loading="lazy" decoding="async" alt="햇빛 따스한 거실에서 쉬고 있는 소형견들">
+    <div class="band-copy">
+      <div class="band-top">
+        <span class="eyebrow" data-i18n="band.eyebrow">QUIZ · 105문항</span>
+        <img class="band-mascot" src="assets/helper_cat.png" alt="">
+        <span class="band-cap" data-i18n="panel.todayTitle">오늘의 반려동물 상식</span>
+      </div>
+      <!-- 상식이 한 줄씩 돌아간다 (tips.js renderTip) -->
+      <div class="band-tip" id="bandTip"></div>
+      <div class="band-actions">
+        <button type="button" class="btn btn-on-image" data-goto="tips" data-i18n="band.cta">퀴즈 풀어 보기</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="tipNextBtn" data-i18n="panel.nextTip">다른 상식</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 🔥 파노라마 — [(지역) (카테고리) 핫한 곳] ═══ -->
+  <section class="hot-band" id="hotBand">
+    <div class="hot-head">
+      <span class="section-eyebrow" data-i18n="hot.eyebrow">HOT NOW</span>
+      <h2 class="hot-title" id="hotTitle"></h2>
+      <span class="hot-sub" data-i18n="hot.sub">네이버 방문자 평점이 높은 순 · 지역과 카테고리를 바꿔 보세요</span>
+      <button type="button" class="btn btn-ghost btn-sm hot-refresh" id="hotRefresh"><i data-ic="refresh"></i> <span data-i18n="hot.refresh">다시 찾기</span></button>
+    </div>
+    <div class="hot-rail" id="hotRail">
+      <div class="hot-empty" data-i18n="hot.loading">평점 높은 곳을 찾는 중…</div>
+    </div>
+    <p class="hot-hint" data-i18n="hot.hint">카드를 누르면 규정·체크리스트까지 볼 수 있어요</p>
+  </section>
+
+  <div class="section" id="secSrc">
+    <div class="section-head">
+      <span class="section-eyebrow" data-i18n="src.eyebrow">SOURCE</span>
+      <h2 data-i18n="src.title">활용 공공데이터</h2>
+    </div>
+    <div class="src-list">
+      <div class="src-item"><i data-i18n="src.1n">9,764곳</i><b data-i18n="src.1b">한국관광공사</b><span data-i18n="src.1s">반려동물 동반여행 서비스</span></div>
+      <div class="src-item"><i data-i18n="src.2n">70,650곳</i><b data-i18n="src.2b">한국문화정보원</b><span data-i18n="src.2s">반려동물 동반 가능 시설</span></div>
+      <div class="src-item"><i id="vetTotal" data-i18n="src.3n">5,038곳</i><b data-i18n="src.3b">행정안전부</b><span data-i18n="src.3s">전국 동물병원 · 전수조사로 오류 406곳 삭제</span></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ═══ 목록 ═══ -->
+<section id="pageResults" class="page hidden">
+  <div class="result-head">
+    <div class="result-title">
+      <h2 id="resultTitle" data-i18n="res.title">목록</h2>
+      <span id="countInfo" class="count-info"></span>
+    </div>
+    <div class="result-tools">
+      <select id="areaSelect" data-i18n-title="res.areaTitle" title="지역 선택">
+        <option value="" data-i18n="area.">전국</option>
+        <option value="1" selected data-i18n="area.1">서울</option>
+        <option value="31" data-i18n="area.31">경기</option>
+        <option value="2" data-i18n="area.2">인천</option>
+        <option value="32" data-i18n="area.32">강원</option>
+        <option value="33" data-i18n="area.33">충북</option>
+        <option value="34" data-i18n="area.34">충남</option>
+        <option value="35" data-i18n="area.35">경북</option>
+        <option value="36" data-i18n="area.36">경남</option>
+        <option value="37" data-i18n="area.37">전북</option>
+        <option value="38" data-i18n="area.38">전남</option>
+        <option value="39" data-i18n="area.39">제주</option>
+        <option value="3" data-i18n="area.3">대전</option>
+        <option value="4" data-i18n="area.4">대구</option>
+        <option value="5" data-i18n="area.5">광주</option>
+        <option value="6" data-i18n="area.6">부산</option>
+        <option value="7" data-i18n="area.7">울산</option>
+        <option value="8" data-i18n="area.8">세종</option>
+      </select>
+      <input id="searchInput" type="search" data-i18n-ph="res.searchPh" placeholder="이름·주소 검색">
+      <label class="chk"><input type="checkbox" id="fitOnly"> <span data-i18n="res.fitOnly">입장 가능만</span></label>
+      <button class="btn btn-ghost btn-sm" id="reSearchBtn" data-i18n-title="res.reSearchTitle"><span data-logo="xs"></span> <span data-i18n="res.reSearch">AI 다시 검색</span></button>
+      <button class="btn btn-ghost btn-sm" id="resetBtn" data-i18n-title="res.resetTitle"><i data-ic="refresh"></i> <span data-i18n="res.reset">초기화</span></button>
+      <button class="btn btn-ghost btn-sm" id="toMapBtn"><i data-ic="map"></i> <span data-i18n="res.toMap">지도로 보기</span></button>
+      <button class="btn btn-ghost btn-sm hidden" id="favBackBtn"><i data-ic="refresh"></i> <span data-i18n="fav.backToAll">전체 목록으로</span></button>
+    </div>
+  </div>
+  <div id="placeList" class="place-list" aria-live="polite"></div>
+</section>
+
+<!-- ═══ 지도 ═══ -->
+<section id="pageMap" class="page hidden">
+  <div class="map-shell">
+    <div id="map"></div>
+    <div id="mapSourceTag" class="map-source-tag"></div>
+    <div class="map-legend">
+      <span><i class="dot" style="background:#0E8A50"></i><span data-i18n="map.ok">입장 가능</span></span>
+      <span><i class="dot" style="background:#C07C1E"></i><span data-i18n="map.cond">조건부</span></span>
+      <span><i class="dot" style="background:#C4362D"></i><span data-i18n="map.no">불가</span></span>
+      <span><i class="dot" style="background:#0A63CE"></i><span data-i18n="map.unknown">확인 필요</span></span>
+    </div>
+    <div class="map-bar">
+      <span id="mapTitle" data-i18n="map.title">지도</span>
+      <button class="btn btn-ghost btn-sm" id="toListBtn"><i data-ic="list"></i> <span data-i18n="map.toList">목록으로</span></button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 반려동물 팁 (퀴즈) ═══ -->
+<section id="pageTips" class="page hidden">
+  <div class="tips-hero">
+    <img class="tips-photo" src="assets/band-walk.jpg" loading="lazy" decoding="async" alt="산책하는 반려견들">
+    <div class="tips-hero-copy">
+      <span class="eyebrow on-dark" data-i18n="tips.eyebrow">QUIZ &amp; TIPS</span>
+      <h2 data-i18n="tips.title">반려동물 상식 퀴즈</h2>
+      <p><span data-i18n="tips.leadA">강아지 · 고양이 · 예방접종 · 위험한 음식 · 기초 상식 · 기분 신호까지</span>
+         <b id="quizTotal">총 문항</b><span data-i18n="tips.leadB">을 O/X로 확인해 보세요.</span></p>
+    </div>
+    <img id="quizMascot" class="tips-mascot" src="assets/helper_dog.png" alt="">
+  </div>
+
+  <div class="tips-wrap">
+    <div class="quiz-score" id="quizScore"></div>
+
+    <!-- 누적 기록 공유 패널 — 점수 카드의 [결과 자랑하기]로 열고 닫는다 -->
+    <div class="share-panel hidden" id="sharePanel"></div>
+
+    <div class="quiz-cats" id="quizCats"></div>
+
+    <div class="quiz-stage" id="quizStage"></div>
+
+    <div class="tips-list-head">
+      <h3 data-i18n="tips.listTitle">알아두면 좋은 상식</h3>
+      <span data-i18n="tips.listSub">위생 · 청결 · 안전 · 잘못된 상식</span>
+    </div>
+    <div class="tips-list" id="tipsList"></div>
+
+    <p class="tips-note" data-i18n="tips.note">건강·접종 관련 내용은 일반적인 안내이며, 우리 아이에게 맞는 판단은 수의사와 상담해 주세요.</p>
+  </div>
+</section>
+
+<!-- ═══ 상세 패널 ═══ -->
+<aside id="detailPanel" class="detail-panel hidden">
+  <button id="detailClose" class="detail-close" data-i18n-title="dt.close" title="닫기"><i data-ic="close"></i></button>
+  <div id="detailBody"></div>
+</aside>
+
+<!-- ═══ AI 대화 (마스코트 중앙) ═══ -->
+<div id="aiModal" class="ai-modal hidden">
+  <div class="ai-card">
+    <!-- 손잡이: 눌러도 닫히고, 아래로 끌어내려도 닫힌다(무엇을 하면 닫히는지 보이게) -->
+    <button type="button" id="aiGrab" class="ai-grab" data-i18n-title="ai.close" title="닫기">
+      <span class="ai-grab-bar"></span>
+      <span class="ai-grab-txt" data-i18n="ai.dragClose">아래로 내리면 닫혀요</span>
+    </button>
+    <button id="aiClose" class="ai-close" data-i18n-title="ai.close" title="닫기"><i data-ic="close"></i></button>
+    <div class="ai-stage">
+      <img id="aiMascot" class="ai-mascot" src="assets/helper_dog.png" alt="도우미">
+      <div id="aiBubble" class="ai-bubble" data-i18n="ai.bubble">어디로 갈지 물어봐! 우리 아이가 갈 수 있는 곳만 골라 줄게.</div>
+    </div>
+    <div id="aiResult" class="ai-result"></div>
+    <form class="ai-bar ai-bar-sm" id="aiForm2">
+      <span class="ai-bar-icon" data-logo="sm"></span>
+      <input id="aiInput2" type="text" autocomplete="off" data-i18n-ph="ai.ph2" placeholder="다시 물어보기 — 새 질문을 입력하세요">
+      <button type="submit" class="ai-bar-btn" data-i18n="ai.send">보내기</button>
+    </form>
+    <div class="ai-foot">
+      <button type="button" class="ai-reset" id="aiResetBtn"><i data-ic="refresh"></i> <span data-i18n="ai.reset">처음부터 다시 검색</span></button>
+      <span data-i18n="ai.foot">Google Gemini로 검색 조건을 해석합니다</span>
+    </div>
+  </div>
+</div>
+
+<script src="js/i18n.js"></script>
+<script src="js/config.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/geoverify.js"></script>
+<script src="js/extra.js"></script>
+<script src="js/mapadapter.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/tips.js"></script>
+<script src="js/hot.js"></script>
+<!-- app.js 보다 먼저 — 첫 목록을 그릴 때 PetFav.button() 이 이미 있어야 한다 -->
+<script src="js/kakaoshare.js"></script>
+<script src="js/favorites.js"></script>
+<script src="js/share.js"></script>
+<!-- 📍 내 위치 → 바로 길안내 (좌표는 메모리에만, 저장·전송 없음) -->
+<!-- app.js 보다 먼저 — 하단 탭바를 먼저 심어야 app.js가 클릭을 배선한다 -->
+<script src="js/appshell.js"></script>
+<script src="js/app.js"></script>
+<!-- 화면을 따라다니는 도우미 — 마크업을 스스로 심으므로 마지막에 둔다 -->
+<script src="js/buddy.js"></script>
+<script src="js/welcome.js"></script>
+</body>
+</html>

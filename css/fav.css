@@ -1,0 +1,306 @@
+/* ─────────────────────────────────────────────────────────────
+ * ❤️ 즐겨찾기 · 🔐 구글 로그인 레이어
+ *
+ * 추가 전용 스타일 — style.css 의 선택자를 하나도 덮어쓰지 않는다.
+ * 색·둥근모서리·그림자는 전부 기존 토큰(--banana, --r-card …)을 그대로 쓴다.
+ * ───────────────────────────────────────────────────────────── */
+
+/* ══════════ 상단바 하트 버튼 ══════════ */
+.fav-top-btn {
+  position: relative;
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--hairline); background: var(--canvas); color: var(--ink);
+  border-radius: 50%; cursor: pointer;
+  transition: all .2s var(--ease);
+  flex: none;
+}
+.fav-top-btn:hover { border-color: var(--banana); background: var(--banana-soft); }
+.fav-top-btn .ic { width: 18px; height: 18px; }
+.fav-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-pill);
+  background: var(--ink); color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 1;
+  border: 2px solid var(--canvas);
+}
+.fav-badge.hidden { display: none; }
+
+/* ══════════ 카드 · 상세의 하트 토글 ══════════ */
+.fav-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; flex: none;
+  border: 0; border-radius: 50%;
+  background: transparent; color: var(--stone);
+  cursor: pointer; padding: 0;
+  transition: transform .18s var(--ease), color .18s var(--ease), background .18s var(--ease);
+}
+/* 아이콘은 클릭 대상에서 빼 둔다 — 하트가 다시 그려지는 순간 눌러도
+ * 이벤트가 항상 버튼에서 잡히도록(내부 SVG 가 교체돼 클릭이 씹히는 것 방지) */
+.fav-btn .ic { width: 20px; height: 20px; pointer-events: none; }
+.fav-btn:hover { color: var(--no); transform: scale(1.12); }
+.fav-btn.is-on { color: var(--no); }
+.fav-btn.is-on:hover { transform: scale(1.12); }
+/* 저장하는 순간 한 번 톡 — 눌렸다는 확인 */
+.fav-btn.is-on .ic-heart-on { animation: favPop .32s var(--ease); }
+@keyframes favPop {
+  0%   { transform: scale(.6); }
+  55%  { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+
+/* 목록 카드: 사진 위 오른쪽 위에 얹는다 (기존 레이아웃을 밀지 않는다) */
+.place-card { position: relative; }
+.fav-btn.pc-fav {
+  position: absolute; top: 26px; right: 26px; z-index: 3;
+  width: 38px; height: 38px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: saturate(1.4) blur(3px);
+}
+.fav-btn.pc-fav:hover { background: #fff; }
+
+/* 상세 패널: 제목 오른쪽 */
+.dt-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.dt-title-row .dt-title { flex: 1; min-width: 0; }
+.fav-btn.dt-fav { margin-top: 2px; }
+
+/* ══════════ 즐겨찾기 패널 ══════════ */
+.fav-pop {
+  position: fixed; top: calc(var(--topbar-h) + 8px); right: var(--page-x); z-index: 950;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--topbar-h) - 32px);
+  display: flex; flex-direction: column;
+  background: var(--canvas);
+  border: 1px solid var(--hairline); border-radius: var(--r-card);
+  box-shadow: var(--shadow-lg); padding: 16px 18px 18px;
+  animation: fade .18s var(--ease);
+}
+.fav-pop.hidden { display: none; }
+.fav-pop .rp-head { gap: 10px; }
+.fav-pop-count { margin-right: auto; font-size: 12px; color: var(--mute); font-weight: 700; }
+.fav-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* ── 계정 줄 ── */
+.fav-acc {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px; margin-bottom: 12px;
+  border: 1px solid var(--hairline-soft); border-radius: 14px;
+  background: var(--cloud);
+}
+.fav-acc-guest { flex-direction: column; align-items: stretch; gap: 10px; }
+.fav-ava { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: none; }
+.fav-ava-blank {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--banana); color: var(--banana-text); font-weight: 800; font-size: 15px;
+}
+.fav-acc-txt { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.fav-acc-txt b { font-size: 14px; font-weight: 800; letter-spacing: -.02em; }
+.fav-acc-txt span, .fav-note { font-size: 12px; color: var(--mute); line-height: 1.45; }
+.fav-gsi { display: flex; justify-content: center; min-height: 40px; }
+
+/* ── 저장 목록 ── */
+.fav-list { display: flex; flex-direction: column; gap: 8px; }
+.fav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px; border: 1px solid var(--hairline-soft); border-radius: 14px;
+  background: var(--canvas);
+  transition: border-color .18s var(--ease), background .18s var(--ease);
+}
+.fav-item:hover { border-color: var(--hairline); background: var(--cloud); }
+.fav-thumb {
+  width: 52px; height: 52px; flex: none; border-radius: 10px; overflow: hidden;
+  background: var(--cloud-deep); color: var(--stone);
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.fav-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.fav-main { flex: 1; min-width: 0; }
+.fav-name {
+  font-size: 14px; font-weight: 800; letter-spacing: -.02em; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fav-addr {
+  font-size: 12px; color: var(--mute); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fav-acts { display: flex; align-items: center; gap: 5px; flex: none; }
+.fav-acts .btn { white-space: nowrap; }
+.fav-route { display: inline-flex; align-items: center; text-decoration: none; }
+.fav-x {
+  width: 28px; height: 28px; flex: none;
+  border: 0; border-radius: 50%; background: transparent; color: var(--stone);
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.fav-x:hover { background: var(--no-bg); color: var(--no); }
+.fav-x .ic { width: 14px; height: 14px; }
+.fav-clear { margin-top: 12px; width: 100%; }
+.fav-empty {
+  padding: 28px 14px; text-align: center;
+  font-size: 13px; color: var(--mute); line-height: 1.7;
+  border: 1px dashed var(--hairline); border-radius: 14px;
+}
+
+/* ══════════ 토스트 (웹 전용 — 앱에는 셸의 .app-toast 가 이미 있다) ══════════ */
+.fav-toast {
+  position: fixed; left: 50%; bottom: 24px; z-index: 1200;
+  transform: translate(-50%, 14px);
+  padding: 11px 18px; border-radius: var(--r-pill);
+  background: rgba(25, 25, 29, .92); color: #fff;
+  font-size: 13px; font-weight: 700; letter-spacing: -.01em;
+  box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s var(--ease), transform .2s var(--ease);
+}
+.fav-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ══════════ 좁은 화면 ══════════ */
+@media (max-width: 700px) {
+  .fav-pop {
+    right: 12px; left: 12px; width: auto;
+    max-height: calc(100vh - var(--topbar-h) - 24px);
+  }
+  .fav-item { flex-wrap: wrap; }
+  .fav-acts { width: 100%; justify-content: flex-end; }
+  .fav-btn.pc-fav { top: 22px; right: 22px; }
+}
+
+/* 앱(하단 탭바)에서는 패널이 탭바를 넘어가지 않게 */
+.is-app .fav-pop {
+  max-height: calc(100vh - var(--topbar-h) - var(--tabbar-total) - var(--safe-bottom) - 24px);
+}
+.is-app .fav-toast { bottom: calc(var(--tabbar-total) + var(--safe-bottom) + 18px); }
+
+/* ══════════ 📥 AI 모달 손잡이 — 아래로 내려 닫기 ══════════
+ * 닫는 방법이 오른쪽 위 X 하나뿐이라 잘 안 보였다. 카드 맨 위에 손잡이를 두고
+ * "아래로 내리면 닫혀요"를 적어 둔다. 끌어도 닫히고, 그냥 눌러도 닫힌다. */
+.ai-grab {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: 100%; padding: 9px 0 6px; border: 0; background: transparent;
+  cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent;
+}
+.ai-grab:active { cursor: grabbing; }
+.ai-grab-bar {
+  width: 42px; height: 4px; border-radius: 999px;
+  background: var(--hairline); transition: background .18s var(--ease), width .18s var(--ease);
+}
+.ai-grab:hover .ai-grab-bar, .ai-grab:active .ai-grab-bar { background: var(--stone); width: 56px; }
+.ai-grab-txt { font-size: 11.5px; color: var(--mute); letter-spacing: -.01em; }
+#aiModal .ai-card { transition: transform .22s var(--ease), opacity .22s var(--ease); }
+
+/* ══════════ 🐶 도우미 안내 — "그 화면으로 갈까요?" ══════════ */
+.bd-ask {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--hairline-soft);
+}
+.bd-ask-q { font-size: 12px; color: var(--mute); margin-right: auto; }
+.bd-go, .bd-no {
+  border: 1px solid var(--hairline); border-radius: 999px;
+  padding: 5px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.bd-go { background: var(--banana); border-color: var(--banana); color: var(--ink); }
+.bd-no { background: transparent; color: var(--mute); }
+.bd-go:hover { filter: brightness(.96); }
+.bd-no:hover { color: var(--ink); }
+
+/* ══════════ ❤️ 즐겨찾기 목록 모드 ══════════ */
+.fav-toList {
+  width: 100%; justify-content: center; margin-bottom: 10px;
+  border: 1px solid var(--hairline);
+}
+#pageResults.fav-mode .result-tools { gap: 8px; }
+
+/* ══════════ 👋 앱 첫 화면 — 로그인 / 그냥 쓰기 ══════════ */
+.wc-gate {
+  position: fixed; inset: 0; z-index: 1400;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: var(--banana, #FFE135);
+  opacity: 0; transition: opacity .22s var(--ease);
+}
+.wc-gate.show { opacity: 1; }
+.wc-card {
+  width: min(360px, 100%);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 26px 22px 22px;
+  background: var(--canvas, #fff);
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.wc-mark { display: inline-flex; }
+.wc-mark svg { width: 54px; height: 54px; }
+.wc-title { font-size: 22px; font-weight: 800; letter-spacing: -.03em; }
+.wc-lead { font-size: 13.5px; color: var(--mute); line-height: 1.5; margin: 0; }
+.wc-gsi { display: flex; justify-content: center; min-height: 44px; margin-top: 6px; }
+.wc-skip {
+  width: 100%; min-height: 46px;
+  border: 1.5px solid var(--hairline); border-radius: var(--r-pill);
+  background: var(--canvas); color: var(--ink);
+  font: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer;
+}
+.wc-skip:active { background: var(--cloud); }
+.wc-note { font-size: 11.5px; color: var(--mute); line-height: 1.45; }
+
+/* ── 앱 전용 구글 로그인 버튼 ─────────────────────────────────
+ * 웹에서는 구글이 자기 버튼을 직접 그려 준다(renderButton). 앱에서는 그 스크립트가
+ * 돌지 않아 우리가 그리는데, 구글 브랜딩 가이드라인 값을 그대로 따른다 —
+ * 흰 바탕 / #747775 테두리 / 로고는 4색 원본 그대로 / 문구는 「Google로 로그인」.
+ * 로고 색을 바꾸거나 로고만 따로 쓰는 것은 규정 위반이라 하지 않는다. */
+.g-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: 46px; padding: 0 18px;
+  border: 1px solid #747775; border-radius: var(--r-pill, 999px);
+  background: #fff; color: #1f1f1f;
+  font: inherit; font-size: 14.5px; font-weight: 600; letter-spacing: -.01em;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s var(--ease), box-shadow .15s var(--ease);
+}
+.g-btn:active { background: #f2f2f2; }
+.g-btn:disabled { cursor: default; }
+.g-btn.is-busy { opacity: .6; }
+.g-btn .g-mark { width: 19px; height: 19px; flex: 0 0 auto; }
+
+.fav-gsi .g-btn { max-width: 280px; }
+
+/* 첫 화면에서는 「로그인 없이 사용하기」와 폭을 맞춰 세로로 나란히 선다 */
+.wc-gsi { width: 100%; }
+.wc-gsi .g-btn { min-height: 48px; font-size: 15px; }
+/* 구글 로그인이 주 동작이라, 건너뛰기는 한 단계 눌러 둔다 */
+.wc-skip { color: var(--mute); font-weight: 600; }
+
+/* ══════════ 📤 공유 ══════════ */
+.sh-wrap { position: relative; display: inline-flex; }
+.sh-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; padding: 0 16px;
+  border: 1.5px solid var(--hairline); border-radius: var(--r-pill);
+  background: var(--canvas); color: var(--ink);
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  white-space: nowrap;
+}
+.sh-btn:hover { border-color: var(--banana-deep); }
+.sh-btn .ic { width: 16px; height: 16px; }
+.sh-menu {
+  /* 공유 버튼이 상세 패널 오른쪽 끝에 있어, left 기준이면 메뉴가 화면 밖으로 잘린다 */
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 60;
+  display: none; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--canvas); border: 1px solid var(--hairline);
+  border-radius: 14px; box-shadow: var(--shadow-lg); min-width: 148px;
+}
+.sh-wrap.show .sh-menu { display: flex; }
+/* 상세 맨 위에서 열면 메뉴가 상단바(z-index 900) 아래로 들어가 눌리지 않는다
+ * → 위 공간이 모자라면 아래로 펼친다(share.js 가 .drop 을 붙인다) */
+.sh-wrap.drop .sh-menu { bottom: auto; top: calc(100% + 8px); }
+.sh-one {
+  border: 0; border-radius: 10px; background: transparent;
+  padding: 9px 12px; text-align: left;
+  font: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink); cursor: pointer;
+}
+.sh-one:hover { background: var(--cloud); }
+.sh-kakao::before { content: "💬 "; }
+.sh-insta::before { content: "📷 "; }
+.sh-x::before { content: "✕ "; }
+
+.is-app .sh-btn { padding: 0 13px; font-size: 13px; }
