@@ -43,8 +43,11 @@ INPUT>>>`;
  *  · 2.5 계열은 새 프로젝트 키에서 404("no longer available to new users") → 3.x 를 앞에 둔다.
  *    옛 프로젝트 키에서는 2.5 가 아직 되므로 맨 뒤 대체용으로만 남긴다.
  *  · 상위 Flash 는 몰리면 503 "high demand" 를 준다 → 같은 모델 재시도는 의미가 없어 바로 다음 모델로.
- *  · 검색 조건·품종은 짧은 JSON 한 덩이라 Lite(실측 약 0.8초)가 먼저,
- *    25곳 중 고르는 추천은 최신 Flash 가 먼저(실측 2~4초).
+ *  · 검색 조건·품종은 짧은 JSON 한 덩이라 Lite(실측 0.6~1.2초)가 먼저,
+ *    25곳 중 고르는 추천은 최신 Flash 가 먼저(실측 2.9~3.9초, 가끔 7초 넘게 매달림 → 아래 HEDGE_MS).
+ *  · 추천 대체 모델 실측(2026-10-13, 후보 25곳·30kg 대형견 질문 3회):
+ *    3.5-flash 1.8~2.0초·정확, 3.1-flash-lite 1.2~1.4초·정확,
+ *    3.5-flash-lite 1.0~1.2초인데 "소형견·중형견 가능" 장소를 고르거나 빈 답 → 추천 체인에서 뺐다.
  * 환경변수 GEMINI_FAST_MODELS / GEMINI_SMART_MODELS (쉼표 구분)로 순서를 바꿀 수 있다. */
 const listEnv = (name, def) => String(process.env[name] || def)
   .split(",").map(s => s.trim()).filter(s => /^[a-z0-9.\-]{3,60}$/.test(s));
@@ -52,7 +55,7 @@ const CHAINS = {
   fast: listEnv("GEMINI_FAST_MODELS",
     "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-flash-lite"),
   smart: listEnv("GEMINI_SMART_MODELS",
-    "gemini-3.8-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash")
+    "gemini-3.8-flash,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash")
 };
 const CHAIN_OF = { search: "fast", breed: "fast", advise: "smart" };
 /* 점검용으로 모델 하나만 지정해 부를 수 있다(체인에 있는 모델만 — 비싼 모델로 새지 않게) */
@@ -64,6 +67,9 @@ const PER_CALL_MS = { fast: 5000, smart: 8000 };
 /* 체인 전체 한도 — 화면(js/ai.js)이 검색·품종 12초, 추천 15초에 끊으므로 그보다 먼저 답한다.
  * 이보다 늦으면 화면은 이미 로컬 해석으로 넘어가 서버의 대체 모델 답이 버려진다. */
 const BUDGET_MS = { fast: 10000, smart: 13000 };
+/* 앞 모델이 이 시간 안에 답하지 않으면 다음 모델을 같이 출발시켜 먼저 온 쓸 만한 답을 쓴다(진 쪽은 끊는다).
+ * 3.8-flash 가 매달려도 3.5-flash(약 2초)가 받쳐 추천이 6초 안팎에 끝난다. 앞 모델이 금방 실패하면 기다리지 않는다. */
+const HEDGE_MS = { smart: Number(process.env.AI_HEDGE_MS || 4000) };
 
 /* AI Studio 키는 Gemini API, Vertex 익스프레스 키(AQ.… 가 많다)는 Vertex AI 가 받는다.
  * 요청·응답 모양은 같다 → Gemini API 로 먼저 부르고, 키를 거절하면 Vertex 로 한 번 더.
@@ -227,10 +233,16 @@ function genConfig(think) {
   return g;
 }
 
-/** 한 번 보내고 본문까지 받는다 — 본문 읽기까지 시한 안에 넣어야 매달리지 않는다 */
-async function send(ep, model, body, key, ms) {
+/** 한 번 보내고 본문까지 받는다 — 본문 읽기까지 시한 안에 넣어야 매달리지 않는다.
+ *  signal 은 바깥에서 끊을 때(다른 모델이 먼저 답했을 때) 쓴다. */
+async function send(ep, model, body, key, ms, signal) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
+  const stop = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener("abort", stop, { once: true });
+  }
   try {
     const res = await fetch(`${ENDPOINTS[ep]}/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
@@ -242,14 +254,15 @@ async function send(ep, model, body, key, ms) {
     return { status: res.status, text: await res.text() };
   } finally {
     clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", stop);
   }
 }
 
-async function request(model, body, key, ms) {
+async function request(model, body, key, ms, signal) {
   const order = preferred === "vertex" ? ["vertex", "gemini"] : ["gemini", "vertex"];
   let first = null;
   for (const ep of order) {
-    const r = await send(ep, model, body, key, ms);
+    const r = await send(ep, model, body, key, ms, signal);
     if (r.status === 200) { preferred = ep; return r; }
     const rejected = r.status === 401 || r.status === 403 ||
       (r.status === 400 && KEY_REJECTED.test(r.text));
@@ -306,52 +319,101 @@ function readAnswer(text) {
   return data && typeof data === "object" ? { data } : { why: "bad_json" };
 }
 
+/** 모델 하나를 부른다(추론 설정 재시도 포함). 쓸 만한 답이면 { data }, 아니면 {} — 실패는 ctx.tried 에 남긴다.
+ *  같은 키로는 어느 모델도 안 되는 실패(FATAL)는 { fatal } 로 돌려준다.
+ *  signal 이 끊기면(다른 모델이 먼저 답함) 기록 없이 조용히 끝낸다. */
+async function tryModel(model, prompt, key, ctx, signal) {
+  let think = thinkingStart(model);
+  for (;;) {
+    if (signal && signal.aborted) return {};
+    const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: genConfig(think) });
+    let r;
+    try {
+      r = await request(model, body, key, Math.min(ctx.perCall, ctx.timeLeft()), signal);
+    } catch (e) {
+      if (signal && signal.aborted) return {};
+      ctx.tried.push({ model, reason: e && e.name === "AbortError" ? "timeout" : "network" });
+      return {};                                 // 같은 모델을 또 기다리지 않는다
+    }
+    if (r.status === 200) {
+      thinkingLearned.set(model, think);
+      const a = readAnswer(r.text);
+      if (a.data) return { data: a.data };
+      ctx.tried.push({ model, status: 200, reason: a.why });
+      return {};
+    }
+    const reason = reasonOf(r.status, r.text);
+    // 추론 끄는 방법을 안 받는 모델 — 다음 방법으로 같은 모델을 한 번 더
+    if (reason === "bad_request" && think < THINKING.length - 1 && ctx.timeLeft() >= 1500) {
+      console.log(`[ai] ${model} 400 with ${JSON.stringify(THINKING[think])}, trying ${JSON.stringify(THINKING[think + 1])}: ${errText(r.text)}`);
+      think++;
+      continue;
+    }
+    ctx.tried.push({ model, status: r.status, reason, msg: errText(r.text) });
+    if (FATAL.has(reason)) {
+      const err = new Error(reason);
+      err.reason = reason;
+      err.detail = String(r.text || "").slice(0, 300);
+      return { fatal: err };
+    }
+    return {};                                   // 503·404·400 → 다음 모델
+  }
+}
+
+/** a 에 hedgeMs 만큼 먼저 기회를 준다. 그 안에 끝나지 않으면 b 도 출발시켜 먼저 온 쓸 만한 답을 쓰고 진 쪽은 끊는다.
+ *  a 가 그 안에 실패로 끝나면 기다리지 않고 바로 b 로 간다. */
+async function hedged(a, b, call, hedgeMs, ctx) {
+  const ca = new AbortController(), cb = new AbortController();
+  let aDone = false;
+  const pa = call(a, ca.signal).then(r => { aDone = true; return r; });
+  let timer;
+  const early = await Promise.race([pa, new Promise(res => { timer = setTimeout(() => res(null), hedgeMs); })]);
+  clearTimeout(timer);
+  if (early) {
+    if (early.data || early.fatal) return { r: early, model: a };
+    if (ctx.timeLeft() < 1500) { ctx.tried.push({ model: b, reason: "no_time" }); return { r: {}, model: b }; }
+    return { r: await call(b, cb.signal), model: b };
+  }
+  const pb = call(b, cb.signal);
+  const win = await new Promise(resolve => {
+    let left = 2;
+    const done = (x) => { if (x.r.data || x.r.fatal || --left === 0) resolve(x); };
+    pa.then(r => done({ r, model: a }));
+    pb.then(r => done({ r, model: b }));
+  });
+  ca.abort(); cb.abort();
+  if (win.model === b && win.r.data && !aDone) ctx.tried.push({ model: a, reason: "slow" });
+  return win;
+}
+
 /** 체인을 따라 내려가며 처음으로 쓸 만한 답을 준 모델의 결과를 돌려준다 */
 async function generate(chainName, prompt, key, forcedModel) {
   const chain = forcedModel ? [forcedModel] : CHAINS[chainName];
   const started = Date.now();
-  const tried = [];
-  const timeLeft = () => (BUDGET_MS[chainName] || 13000) - (Date.now() - started);
-  for (const model of chain) {
-    if (timeLeft() < 1500) { tried.push({ model, reason: "no_time" }); break; }
-    let think = thinkingStart(model);
-    for (;;) {
-      const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: genConfig(think) });
-      let r;
-      try {
-        r = await request(model, body, key, Math.min(PER_CALL_MS[chainName] || 9000, timeLeft()));
-      } catch (e) {
-        tried.push({ model, reason: e && e.name === "AbortError" ? "timeout" : "network" });
-        break;                                   // 같은 모델을 또 기다리지 않는다
-      }
-      if (r.status === 200) {
-        thinkingLearned.set(model, think);
-        const a = readAnswer(r.text);
-        if (a.data) return { model, data: a.data, tried, ms: Date.now() - started };
-        tried.push({ model, status: 200, reason: a.why });
-        break;
-      }
-      const reason = reasonOf(r.status, r.text);
-      // 추론 끄는 방법을 안 받는 모델 — 다음 방법으로 같은 모델을 한 번 더
-      if (reason === "bad_request" && think < THINKING.length - 1 && timeLeft() >= 1500) {
-        console.log(`[ai] ${model} 400 with ${JSON.stringify(THINKING[think])}, trying ${JSON.stringify(THINKING[think + 1])}: ${errText(r.text)}`);
-        think++;
-        continue;
-      }
-      tried.push({ model, status: r.status, reason, msg: errText(r.text) });
-      if (FATAL.has(reason)) {
-        const err = new Error(reason);
-        err.reason = reason;
-        err.tried = tried;
-        err.detail = String(r.text || "").slice(0, 300);
-        throw err;
-      }
-      break;                                     // 503·404·400 → 다음 모델
+  const ctx = {
+    tried: [],
+    perCall: PER_CALL_MS[chainName] || 9000,
+    timeLeft: () => (BUDGET_MS[chainName] || 13000) - (Date.now() - started)
+  };
+  const call = (model, signal) => tryModel(model, prompt, key, ctx, signal);
+  const hedgeMs = forcedModel ? 0 : (HEDGE_MS[chainName] || 0);
+  let i = 0;
+  while (i < chain.length) {
+    if (ctx.timeLeft() < 1500) { ctx.tried.push({ model: chain[i], reason: "no_time" }); break; }
+    let out;
+    if (i === 0 && hedgeMs > 0 && chain.length > 1) {
+      out = await hedged(chain[0], chain[1], call, hedgeMs, ctx);
+      i = 2;
+    } else {
+      out = { r: await call(chain[i]), model: chain[i] };
+      i++;
     }
+    if (out.r.data) return { model: out.model, data: out.r.data, tried: ctx.tried, ms: Date.now() - started };
+    if (out.r.fatal) { out.r.fatal.tried = ctx.tried; throw out.r.fatal; }
   }
   const err = new Error("ALL_MODELS_FAILED");
   err.reason = "unavailable";
-  err.tried = tried;
+  err.tried = ctx.tried;
   throw err;
 }
 
