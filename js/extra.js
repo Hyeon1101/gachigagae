@@ -83,6 +83,11 @@
       throw Object.assign(new Error(msg), { info: { hint: msg } });
     }
     if (json.error) throw Object.assign(new Error(json.hint || json.message || json.error), { info: json });
+    // 다시 받아도 5xx 인데 오류 표시가 없는 본문 — 빈 성공(0건)으로 넘기면 그 쪽이 조용히 비어 버린다
+    if (!res.ok) {
+      const msg = window.T ? window.T("ex.serverDown") : "공공데이터 서버가 응답하지 않습니다.";
+      throw Object.assign(new Error(msg), { info: { hint: msg } });
+    }
     return json;
   }
 
@@ -173,12 +178,20 @@
       const pages = Math.min(maxPages, Math.max(1, Math.ceil(matched / perPage)));
       const buckets = new Array(pages);
       buckets[0] = mapRows(rows1);
-      const flatten = () => [].concat(...buckets.filter(Boolean));
-      if (onPage) onPage(flatten(), matched);
+      /* 원본에 똑같은 줄이 수십 번씩 들어 있다(2026-10-13 실측: 제주 반려의료 841줄 중 서로 다른 곳 214곳,
+       * 한 약국이 36줄) → 같은 시설(이름·좌표가 같은 id)은 처음 한 번만 남긴다. 쪽을 넘나드는 중복도 거른다. */
+      const flatten = () => {
+        const seen = new Set();
+        return [].concat(...buckets.filter(Boolean)).filter(p => !seen.has(p.contentid) && seen.add(p.contentid));
+      };
+      // 모든 쪽을 다 받았는가 — 그때만 중복을 뺀 곳 수가 진짜 전체 곳 수다
+      let failed = 0;
+      // (buckets 는 빈 칸이 있는 배열이라 every 는 빈 칸을 건너뛴다 → 채워진 칸 수를 센다)
+      const complete = () => failed === 0 && pages * perPage >= matched && buckets.filter(Boolean).length === pages;
+      if (onPage) onPage(flatten(), matched, complete());
 
       const queue = [];
       for (let p = 2; p <= pages; p++) queue.push(p);
-      let failed = 0;
       async function worker() {
         while (queue.length) {
           const page = queue.shift();
@@ -189,11 +202,11 @@
             buckets[page - 1] = [];          // 한 쪽이 실패해도 나머지는 보여 준다
             failed++;
           }
-          if (onPage) onPage(flatten(), matched);
+          if (onPage) onPage(flatten(), matched, complete());
         }
       }
       await Promise.all(Array.from({ length: Math.min(3, queue.length) }, worker));
-      return { items: flatten(), schema, label, matched, failedPages: failed };
+      return { items: flatten(), schema, label, matched, failedPages: failed, complete: complete() };
     },
 
     /** 동물병원 — 행안부 CSV를 좌표변환(EPSG:5174→WGS84)해 번들한 정적 데이터 */

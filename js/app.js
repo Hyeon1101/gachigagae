@@ -246,16 +246,17 @@
         });
         const r = await Extra.loadCulture({
           catKey, sido,
-          onPage: (partial, total) => {
+          // 원본 줄 수(total)에는 똑같은 줄이 섞여 있다 — 다 받았으면 중복을 뺀 곳 수를 쓴다
+          onPage: (partial, total, complete) => {
             if (reqId !== state.reqSeq) return;
-            state.totalCount = total || partial.length;
+            state.totalCount = complete ? partial.length : (total || partial.length);
             state.places = normAll(partial);
             renderThrottled();
           }
         });
         if (reqId !== state.reqSeq) return;
         state.places = normAll(r.items);
-        state.totalCount = r.matched || state.places.length;
+        state.totalCount = r.complete ? state.places.length : (r.matched || state.places.length);
         state.demoMode = false;
         updateDemoBanner();
         renderAll();
