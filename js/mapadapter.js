@@ -173,10 +173,29 @@
       }
     }
     console.info("카카오맵을 쓸 수 없어 오픈맵(OSM)으로 표시합니다.");
-    loadCss("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
-    await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
-    return new LeafletAdapter(el, cfg);
+    try {
+      loadCss("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+      await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", 12000);
+      return new LeafletAdapter(el, cfg);
+    } catch (e) {
+      /* 오픈맵 라이브러리까지 못 받으면(망이 막힌 곳) 예전엔 여기서 예외가 그대로 올라가
+       * 지도 기능 전체가 멈췄다 → 아무것도 그리지 않는 빈 지도로 넘기고, 목록·상세·길안내는
+       * 그대로 쓰게 둔다. */
+      console.warn("오픈맵도 불러오지 못했습니다 — 지도 없이 진행:", (e && e.message) || e);
+      return new NullAdapter();
+    }
   }
+
+  /* ── 지도 없음(모든 지도 실패) — 같은 인터페이스, 아무 일도 하지 않는다 ── */
+  function NullAdapter() { this.markers = []; }
+  NullAdapter.prototype = {
+    name: "지도를 불러오지 못했어요 — 목록의 길안내 버튼을 이용해 주세요",
+    setCenter() {},
+    addMarker() { return null; },
+    clearMarkers() {},
+    fitAll() {},
+    invalidate() {}
+  };
 
   window.PetMapAdapter = { createMap };
 })();

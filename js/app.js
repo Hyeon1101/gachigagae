@@ -133,9 +133,30 @@
     return p;
   }
 
+  /** 시한이 있는 fetch — 브라우저 fetch 는 기본 시한이 없어 서버가 매달리면
+   *  목록이 「불러오는 중」에서 영영 멈춘다(병렬 페이지 하나만 멈춰도 전체가 기다린다) */
+  function fetchWithTimeout(url, ms) {
+    if (typeof AbortController !== "function") return fetch(url);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  }
+
   async function fetchLiveBody(params) {
     const q = new URLSearchParams(params).toString();
-    const res = await fetch(window.API(`/api/pettour?${q}`));
+    const url = window.API(`/api/pettour?${q}`);
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await fetchWithTimeout(url, 25000);
+        // 서버가 잠깐 아팠던 것(5xx)은 한 번만 더 — 키 오류 같은 4xx 는 다시 해도 같다
+        if (res.status >= 500 && attempt === 0) { await new Promise(r => setTimeout(r, 600)); continue; }
+        break;
+      } catch (e) {
+        if (attempt > 0) throw new Error(e && e.name === "AbortError" ? "TIMEOUT" : "NETWORK");
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
     if (!res.ok) throw new Error(`API ${res.status}`);
     const json = await res.json();
     if (json.error) throw new Error(json.error);
@@ -211,10 +232,10 @@
     if (listEl) listEl.innerHTML = `<div class="empty-note">${T("res.loading")}</div>`;
     // 🐾 문화정보원 반려동물 시설 (별도 공공데이터) — "culture:trip" 형태
     if (state.contentType.startsWith("culture")) {
+      const reqId = ++state.reqSeq;
       try {
         const catKey = state.contentType.split(":")[1] || "trip";
         const sido = SIDO_NAME[state.area] || "";
-        const reqId = ++state.reqSeq;
         // 정규화 결과를 id로 캐시 — 이미 만든 객체를 재사용해 판정 캐시까지 보존
         const normCache = new Map();
         const normAll = (rows) => rows.map(it => {
@@ -240,28 +261,35 @@
         renderAll();
         recordRealCount();   // 🐶 마스코트가 실제 가능 수를 채워 넣는다
       } catch (e) {
+        if (reqId !== state.reqSeq) return;     // 그사이 다른 카테고리를 열었다 — 지난 실패로 덮지 않는다
         const info = e.info || {};
         state.places = [];
         state.totalCount = 0;
         renderCount([]);
-        $("#placeList").innerHTML = `<div class="empty-note" style="text-align:left;line-height:1.6;">
+        /* 「활용신청 방법」은 정말 신청이 안 된 경우에만 보여 준다.
+         * 서버가 잠깐 응답을 안 한 것까지 신청 안내로 보여 주면 사용자는 고칠 수 없는 일을 하라는 말만 듣는다. */
+        const notApplied = info.error === "NOT_APPLIED" || info.error === "NOT_CONFIGURED";
+        $("#placeList").innerHTML = notApplied
+          ? `<div class="empty-note" style="text-align:left;line-height:1.6;">
           ${T("ex.noData")}<br><br>
           ${esc(info.hint || e.message)}<br><br>
           ${T("ex.how")}<br>
           ① <a href="${safeUrl(info.applyUrl) || "https://www.data.go.kr/data/15111389/fileData.do"}" target="_blank" rel="noopener" style="color:var(--blue);">${T("ex.step1")}</a>${T("ex.step1s")}<br>
           ${T("ex.step2")}<br>
           <span style="color:var(--ink-sub);font-size:12px;">${T("ex.step3")}</span>
-        </div>`;
+        </div>`
+          : `<div class="empty-note">${esc(info.hint || T("ex.serverDown"))}<br>${T("ex.retry")}</div>`;
         if (state.adapter) state.adapter.clearMarkers();
       }
       return;
     }
 
+    const liveReq = ++state.reqSeq;                     // 탭 전환 중 이전 요청 결과 무시
     if (CFG.USE_LIVE_API) {
       try {
         const params = { op: "areaBasedList", contentTypeId: state.contentType, arrange: "O" };
         if (state.area) params.areaCode = state.area;   // 빈 값 = 전국
-        const reqId = ++state.reqSeq;                   // 탭 전환 중 이전 요청 결과 무시
+        const reqId = liveReq;
         // 전 페이지 수집 — 도착하는 대로 화면 반영(점진 표시)
         // 병렬 수집이라 중간 페이지가 나중에 채워질 수 있으므로 id 캐시로 재사용한다
         // (같은 객체를 유지해야 판정 캐시도 살아남는다)
@@ -288,9 +316,12 @@
         items = null;
       }
     }
+    // 그사이 다른 카테고리·지역을 열었다 — 지난 요청의 실패로 새 목록을 데모로 덮지 않는다
+    if (liveReq !== state.reqSeq) return;
     if (items === null) {
       state.demoMode = true;
       const all = await loadSamples();
+      if (liveReq !== state.reqSeq) return;
       state.places = all
         .filter(it => String(it.contenttypeid) === state.contentType)
         .map(it => normalizeItem(it, { source: it.source || "데모 데이터(현장 확인 전)" }));
@@ -953,15 +984,18 @@
               (state._nearbyPool || []).find(x => x.id === id);
     if (!p) return;
     state.selected = p;
-    if (p._geo !== "suspect") state.adapter.setCenter(p.lat, p.lng, true);
+    // 지도는 뒤에서 준비된다 — 아직이면 가운데 맞추기만 건너뛴다(예전엔 여기서 멈춰 상세가 안 열렸다)
+    if (p._geo !== "suspect" && state.adapter) state.adapter.setCenter(p.lat, p.lng, true);
     $("#detailPanel").classList.remove("hidden");
     $("#detailBody").innerHTML = `<div class="empty-note">${T("dt.loading")}</div>`;
     renderList(visiblePlaces());
 
-    await getPetInfo(p);
+    // 규정 상세와 주변 관광지는 서로 기다릴 이유가 없다 — 동시에 받는다(예전엔 차례로 받아 두 배 걸렸다)
+    const [, nearby] = await Promise.all([getPetInfo(p), findNearby(p)]);
+    // 기다리는 사이 다른 곳을 눌렀으면 이 결과로 화면을 덮지 않는다
+    if (state.selected !== p) return;
     const v = verdictOf(p);
     const cards = R.ruleCards(p.pet);
-    const nearby = await findNearby(p);
 
     $("#detailBody").innerHTML = `
       ${(() => {
@@ -1405,6 +1439,14 @@
 
     // AI 조건(크기·실내)으로 한 번 더 추린 뒤, 판정 요약을 붙여 반환
     let list = visiblePlaces();
+    /* AI 가 "카페"·"공원" 같은 종류 낱말을 장소 이름 검색어로 넣으면 이름·주소에 그 글자가
+     * 없는 곳이 전부 걸러져 「못 찾았어」가 된다 → 검색어 때문에 비었으면 검색어를 빼고 다시 본다 */
+    if (!list.length && state.keyword && state.places.length) {
+      state.keyword = "";
+      if (si) si.value = "";
+      list = visiblePlaces();
+      renderAll();
+    }
     if (intent.size && intent.size !== "any") {
       list = list.filter(p => {
         const rules = verdictOf(p).rules;
@@ -1537,10 +1579,30 @@
     const hashed = (location.hash || "").replace("#", "");
     const start = ["home", "results", "map", "tips"].includes(hashed) ? hashed : "home";
     try { history.replaceState({ page: start }, "", "#" + start); } catch (_) {}
-    state.adapter = await window.PetMapAdapter.createMap($("#map"), CFG);
-    $("#mapSourceTag").textContent = T("map.src") + state.adapter.name;
     showPage(start, true);
     openSharedPlace();                  // 주소창의 ?place=… (기다리지 않는다 — 화면은 이미 떠 있다)
+    startMap();                         // 지도는 뒤에서 준비한다(기다리지 않는다)
+  }
+
+  /** 🗺️ 지도 준비 — 화면을 막지 않는다.
+   *  카카오 SDK 가 늦거나 막히면(미등록 도메인·느린 망) 오픈맵 폴백까지 길게는 십수 초가
+   *  걸린다. 예전엔 그동안 첫 화면 전환·공유 링크 열기가 멈춰 있었고, 그 사이 장소를 누르면
+   *  지도가 없어 상세가 열리지 않았다. 준비되면 그때까지 불러 둔 것을 지도에 옮겨 그린다. */
+  async function startMap() {
+    try {
+      state.adapter = await window.PetMapAdapter.createMap($("#map"), CFG);
+    } catch (e) {
+      console.warn("지도를 준비하지 못했습니다:", (e && e.message) || e);
+      return;
+    }
+    $("#mapSourceTag").textContent = T("map.src") + state.adapter.name;
+    state.fitPending = true;
+    renderMarkers(visiblePlaces());
+    const sel = state.selected;
+    if (sel && sel._geo !== "suspect") state.adapter.setCenter(sel.lat, sel.lng, true);
+    if (state.page === "map") {
+      setTimeout(() => { if (state.adapter.invalidate) state.adapter.invalidate(); }, 60);
+    }
   }
 
   init();

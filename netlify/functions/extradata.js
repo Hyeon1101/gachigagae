@@ -39,11 +39,41 @@ const ERR_HINT = {
   "-5": "일시적으로 사용할 수 없는 서비스입니다."
 };
 
+/* odcloud 는 1,000건 한 장에 3초 안팎 걸리고 가끔 매달린다 → 시한 + 한 번 재시도 */
+const CALL_MS = 12000;
+
+async function fetchText(url) {
+  let last;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CALL_MS);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      const text = await res.text();
+      if (res.status >= 500 && attempt === 0) { last = new Error(`HTTP ${res.status}`); continue; }
+      return text;
+    } catch (e) {
+      last = e && e.name === "AbortError" ? new Error("upstream timeout") : e;
+      if (attempt === 0) await new Promise(r => setTimeout(r, 400));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw last;
+}
+
 exports.handler = async (event) => {
   const q = event.queryStringParameters || {};
-  const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=600" };
+  /* 시설 목록은 하루 단위로 바뀌어도 충분하다 → 같은 조건은 CDN 이 하루 동안 대신 답한다.
+   * (첫 사람만 상류를 기다리고 나머지는 즉시 받는다) 실패 응답은 절대 캐시하지 않는다. */
+  const headers = {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800"
+  };
+  const noStore = Object.assign({}, headers, { "Cache-Control": "no-store" });
   // 앱(Capacitor, 오리진 https://localhost)에서도 부를 수 있게 CORS 허용
   Object.assign(headers, withCors({}, event));
+  Object.assign(noStore, withCors({}, event));
   const _pf = preflight(event, headers);
   if (_pf) return _pf;
 
@@ -53,14 +83,14 @@ exports.handler = async (event) => {
   const src = Object.prototype.hasOwnProperty.call(SOURCES, q.src) ? SOURCES[q.src] : null;
 
   if (!src) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: "BAD_SRC", allowed: Object.keys(SOURCES) }) };
+    return { statusCode: 400, headers: noStore, body: JSON.stringify({ error: "BAD_SRC", allowed: Object.keys(SOURCES) }) };
   }
   if (!key) {
-    return { statusCode: 503, headers, body: JSON.stringify({ error: "NO_KEY", message: "TOURAPI_KEY 환경변수가 없습니다." }) };
+    return { statusCode: 503, headers: noStore, body: JSON.stringify({ error: "NO_KEY", message: "TOURAPI_KEY 환경변수가 없습니다." }) };
   }
   if (!src.url) {
     return {
-      statusCode: 200, headers,
+      statusCode: 200, headers: noStore,
       body: JSON.stringify({
         error: "NOT_CONFIGURED",
         hint: `${src.label} 요청주소가 아직 설정되지 않았습니다.`,
@@ -94,18 +124,17 @@ exports.handler = async (event) => {
   }
 
   try {
-    const res = await fetch(`${src.url}?${params.toString()}`);
-    const text = await res.text();
+    const text = await fetchText(`${src.url}?${params.toString()}`);
     let json;
     try { json = JSON.parse(text); }
     catch (_) {
-      return { statusCode: 502, headers, body: JSON.stringify({ error: "BAD_UPSTREAM", raw: text.slice(0, 200) }) };
+      return { statusCode: 502, headers: noStore, body: JSON.stringify({ error: "BAD_UPSTREAM", raw: text.slice(0, 200) }) };
     }
 
     // odcloud 오류 응답: {code:-4, msg:"등록되지 않은 인증키 입니다."}
     if (json.code != null && json.code < 0) {
       return {
-        statusCode: 200, headers,
+        statusCode: 200, headers: noStore,
         body: JSON.stringify({
           error: "NOT_APPLIED",
           code: json.code,
@@ -118,6 +147,8 @@ exports.handler = async (event) => {
     }
     return { statusCode: 200, headers, body: JSON.stringify({ label: src.label, ...json }) };
   } catch (e) {
-    return { statusCode: 502, headers, body: JSON.stringify({ error: "FETCH_FAIL", message: String(e).slice(0, 200) }) };
+    // 상류 오류 원문(주소·키가 섞일 수 있다)은 로그에만 남긴다
+    console.error("[extra] upstream fail:", String((e && e.message) || e).slice(0, 200));
+    return { statusCode: 502, headers: noStore, body: JSON.stringify({ error: "FETCH_FAIL", message: "공공데이터 서버가 응답하지 않습니다." }) };
   }
 };

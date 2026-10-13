@@ -41,10 +41,12 @@ window.PETMAP_CONFIG = {
   // 카카오 JavaScript 키 — 배열 순서대로 시도, 모두 실패 시 OSM 폴백
   // [0] "우편번호" 앱(ID 1475455) Default JS Key — 사용 중.
   //     카카오맵 ON + JavaScript SDK 도메인에 http://localhost:8899,
-  //     https://gachigagae.netlify.app 등록 완료(2026-08-14 호출 검증).
+  //     https://gachigagae.netlify.app, ggagae.com 등록 완료(2026-08 호출 검증).
   //     ※ 새 포트/도메인을 쓰려면 콘솔에 그 주소도 추가해야 함(미등록 시 OSM 폴백)
-  // [1][2] 구 "지도" 앱: OPEN_MAP_AND_LOCAL 비활성(403) — 폴백용으로만 유지
-  KAKAO_JS_KEYS: ["ccdbd0a681ffb74fefb0372e59d8e14b", "3aebab05370656c99aca1f9b79c19b2a", "b4dde2bf8248f253c7bbc79dd5766971"],
+  // ※ 구 "지도" 앱 키 2개(3aebab…·b4dde2…)는 앱 자체가 OPEN_MAP_AND_LOCAL 비활성(403)이라
+  //   절대 성공하지 않는다. 목록에 두면 첫 키가 실패할 때마다 키 하나당 최대 15초(스크립트 8초 +
+  //   초기화 7초)씩 더 기다린 뒤에야 오픈맵으로 넘어갔다 → 2026-10-13 목록에서 뺐다.
+  KAKAO_JS_KEYS: ["ccdbd0a681ffb74fefb0372e59d8e14b"],
   /* 🔐 구글 로그인 — 선택 기능이다.
    *
    *  비워 두면(기본) 로그인 UI 자체가 화면에 나타나지 않고, 즐겨찾기를 포함한

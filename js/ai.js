@@ -14,19 +14,113 @@
     (localStorage.getItem("petmap_helper_kind") || "dog") === "cat"
       ? "assets/helper_cat.png" : "assets/helper_dog.png";
 
-  async function callAI(payload) {
-    const res = await fetch(window.API("/api/ai"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.assign({ lang: window.I18N.lang }, payload))
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.error) {
+  /** 서버 AI 호출. 브라우저 fetch 에는 시한이 없어 Gemini 가 늦으면 말풍선이 영영
+   *  「생각하는 중」에 머문다 → 시한을 넘기면 실패로 보고 로컬 해석으로 넘어간다. */
+  async function callAI(payload, ms) {
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), ms || 15000) : null;
+    let res, json;
+    try {
+      res = await fetch(window.API("/api/ai"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ lang: window.I18N.lang }, payload)),
+        signal: ctrl ? ctrl.signal : undefined
+      });
+      json = await res.json().catch(() => ({}));
+    } catch (e) {
+      const err = new Error(e && e.name === "AbortError" ? "TIMEOUT" : "NETWORK");
+      err.code = err.message;
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (!res.ok || json.error || !json.data) {
       const err = new Error(json.message || json.error || `AI ${res.status}`);
-      err.code = json.error;
+      err.code = json.error || `HTTP_${res.status}`;
       throw err;
     }
     return json.data;
+  }
+
+  /* ══════════ AI 없이 조건 읽기 (로컬 해석) ══════════
+   * 홈 검색창은 AI 전용이라, Gemini 가 한도·과부하·네트워크로 답을 못 하면 검색 자체가
+   * 막혔다(2026-10-13 확인: 구글 프로젝트 월 지출 한도 초과로 「AI 응답을 받지 못했어요」만 떴다).
+   * → 질문 속 낱말(지역·종류·크기·실내)만으로 조건을 만들어 검색은 끝까지 이어 간다. */
+  const AREA_WORDS = [
+    ["1", ["서울", "seoul", "강남", "홍대", "성수", "잠실", "여의도", "종로", "이태원", "마포", "용산"]],
+    ["2", ["인천", "incheon", "강화", "영종", "을왕리"]],
+    ["3", ["대전", "daejeon"]],
+    ["4", ["대구", "daegu"]],
+    ["5", ["광주광역", "gwangju"]],
+    ["6", ["부산", "busan", "해운대", "광안리", "기장"]],
+    ["7", ["울산", "ulsan"]],
+    ["8", ["세종", "sejong"]],
+    ["31", ["경기", "gyeonggi", "수원", "가평", "양평", "파주", "용인", "고양", "성남", "남양주", "포천", "이천", "화성", "평택", "안산", "김포", "광명", "하남"]],
+    ["32", ["강원", "gangwon", "강릉", "속초", "춘천", "양양", "평창", "홍천", "정선", "원주", "고성", "삼척", "동해"]],
+    ["33", ["충북", "충청북", "chungbuk", "청주", "단양", "충주", "제천"]],
+    ["34", ["충남", "충청남", "chungnam", "태안", "보령", "공주", "부여", "천안", "아산", "서산"]],
+    ["35", ["경북", "경상북", "gyeongbuk", "경주", "포항", "안동", "영덕", "울진", "문경"]],
+    ["36", ["경남", "경상남", "gyeongnam", "통영", "거제", "남해", "창원", "진주", "하동", "김해"]],
+    ["37", ["전북", "전라북", "jeonbuk", "전주", "군산", "남원", "부안", "무주"]],
+    ["38", ["전남", "전라남", "jeonnam", "여수", "순천", "목포", "담양", "보성", "완도"]],
+    ["39", ["제주", "jeju", "서귀포", "애월", "협재", "성산", "우도", "한라"]],
+    ["5", ["광주"]]                     // 「경기 광주」보다 광주광역시가 흔하다 — 맨 끝에서만 잡는다
+  ];
+  const CAT_WORDS = [
+    ["culture:medical", ["동물병원", "병원", "약국", "수의", "응급", "vet", "hospital", "pharmacy", "clinic"]],
+    ["culture:service", ["미용", "호텔링", "유치원", "펫샵", "애견샵", "용품", "훈련", "목욕", "groom", "daycare", "pet shop", "pet hotel"]],
+    ["culture:cafe", ["애견카페", "펫카페", "강아지카페", "고양이카페", "반려견카페", "애견 카페", "dog cafe", "pet cafe", "cat cafe"]],
+    ["32", ["숙소", "숙박", "펜션", "호텔", "리조트", "캠핑", "글램핑", "민박", "게스트하우스", "풀빌라", "독채", "stay", "hotel", "pension", "resort", "camp", "lodging", "sleep"]],
+    ["39", ["식당", "맛집", "카페", "음식", "레스토랑", "브런치", "밥", "먹을", "먹고", "커피", "restaurant", "cafe", "café", "eat", "food", "dining", "brunch", "coffee"]],
+    ["28", ["놀이터", "운동장", "수영장", "레포츠", "액티비티", "체험", "서핑", "카약", "playground", "swim", "activity", "sport", "surf"]],
+    ["38", ["쇼핑", "마트", "백화점", "아울렛", "시장", "몰", "shopping", "mall", "market", "outlet"]],
+    ["14", ["박물관", "미술관", "전시", "도서관", "공연", "문화", "museum", "gallery", "exhibition", "library"]],
+    ["12", ["관광", "명소", "공원", "산책", "해변", "바다", "해수욕장", "숲", "오름", "계곡", "호수", "여행", "나들이", "가볼", "놀러",
+            "attraction", "park", "beach", "walk", "trip", "travel", "sightseeing", "hike", "forest", "lake"]]
+  ];
+
+  /** 질문 속에 들어 있는 품종 — 표준 견종표에서 가장 길게 맞는 이름을 고른다 */
+  function breedIn(q) {
+    const k = normKey(q);
+    let best = null, len = 0;
+    (BREEDS || []).forEach(b => b._keys.forEach(key => {
+      if (key.length >= 2 && key.length > len && k.indexOf(key) >= 0) { best = b; len = key.length; }
+    }));
+    return best;
+  }
+
+  function localIntent(q) {
+    const s = String(q || "").toLowerCase();
+    // 영어 낱말은 단어 첫머리에서만 — "great" 안의 "eat" 같은 오탐을 막는다
+    const has = (w) => /^[a-z ]+$/.test(w) ? new RegExp("\\b" + w).test(s) : s.indexOf(w) >= 0;
+    let area = window.PetApp && window.PetApp.getArea ? window.PetApp.getArea() : "1";
+    if (/전국|nationwide|anywhere|korea/.test(s)) area = "";
+    for (const [code, words] of AREA_WORDS) { if (words.some(has)) { area = code; break; } }
+    let category = "12";
+    for (const [cat, words] of CAT_WORDS) { if (words.some(has)) { category = cat; break; } }
+    let size = "any";
+    if (/소형|작은|small|tiny|toy/.test(s)) size = "small";
+    else if (/중형|medium|mid-size/.test(s)) size = "medium";
+    else if (/대형|큰\s*(개|강아지|아이)|large|big dog/.test(s)) size = "large";
+    else {
+      const kg = s.match(/(\d+(?:\.\d+)?)\s*(kg|키로|킬로)/);
+      const breed = breedIn(q);
+      if (kg) size = window.PetRules.sizeFromWeight(parseFloat(kg[1]));
+      else if (breed) size = breed.sizeClass;
+    }
+    const app = window.PetApp || {};
+    return {
+      area,
+      areaName: app.areaName ? app.areaName(area) : "",
+      category,
+      categoryName: app.typeName ? app.typeName(category) : "",
+      keyword: "",
+      size,
+      indoorOnly: /실내|indoor|inside/.test(s) && !/실외|outdoor/.test(s),
+      reply: T("aj.localReply"),
+      _local: true
+    };
   }
 
   /* ══════════ 길안내 ══════════
@@ -94,8 +188,14 @@
   function setResult(html) { $("#aiResult").innerHTML = html; }
 
   /* ══════════ 자연어 검색 ══════════ */
+  /* 질문을 연달아 보내면(예시 칩 두 개를 빠르게) 앞 질문의 늦은 답이 뒤 질문의 결과를
+   * 덮어썼다 → 질문마다 번호를 매기고, 최신 질문이 아니면 화면을 건드리지 않는다. */
+  let askSeq = 0;
+
   async function ask(q) {
     if (!q || !q.trim()) return;
+    const seq = ++askSeq;
+    const stale = () => seq !== askSeq;
     openModal();
     thinking(true);
     say(`<span class="ai-spinner"></span> ${T("aj.thinking", { q: escapeHtml(q) })}`);
@@ -103,12 +203,14 @@
 
     let intent;
     try {
-      intent = await callAI({ mode: "search", q });
+      await loadBreeds();                   // 로컬 해석이 품종으로 크기를 읽을 수 있게(이미 받아 둔 표)
+      intent = await callAI({ mode: "search", q }, 12000);
     } catch (e) {
-      thinking(false);
-      say(aiErrorMsg(e));
-      return;
+      // AI 가 못 하면 질문 속 낱말로 조건을 만들어 검색은 그대로 이어 간다
+      console.warn("AI 검색 해석 실패 → 로컬 해석:", e.code || e.message);
+      intent = localIntent(q);
     }
+    if (stale()) return;
 
     // 조건 태그 표시
     const tags = [
@@ -128,15 +230,18 @@
     try {
       places = await window.PetApp.loadByIntent(intent);
     } catch (e) {
+      if (stale()) return;
       thinking(false);
       setResult(`<div class="empty-note" style="padding:14px;">${T("aj.fail")}${escapeHtml(e.message)}</div>`);
       return;
     }
+    if (stale()) return;
 
     if (!places.length) {
       thinking(false);
       say(`${escapeHtml(intent.reply || "")}${T("aj.notFound")}`);
       setResult(actionRow(intent));
+      bindActions();
       return;
     }
 
@@ -151,9 +256,13 @@
 
     setResult(`<div class="empty-note" style="padding:14px;"><span class="ai-spinner"></span> ${T("aj.choosing", { n: places.length.toLocaleString() })}</div>`);
     let advice = null;
-    try {
-      advice = await callAI({ mode: "advise", q, places: listText, pet: petDesc });
-    } catch (_) { /* 추천 실패해도 목록은 보여준다 */ }
+    // 조건 해석부터 AI 가 못 했으면 추천도 같은 이유로 못 한다 — 기다리지 않고 판정 순으로 고른다
+    if (!intent._local) {
+      try {
+        advice = await callAI({ mode: "advise", q, places: listText, pet: petDesc }, 15000);
+      } catch (_) { /* 추천 실패해도 목록은 보여준다 */ }
+    }
+    if (stale()) return;
 
     thinking(false);
     let picks = (advice && Array.isArray(advice.picks) ? advice.picks : [])
@@ -231,9 +340,19 @@
     const qs = new URLSearchParams({ q: p.title || "", addr: p.addr || "" });
     if (p.lng && p.lat) { qs.set("x", p.lng); qs.set("y", p.lat); }
     if (full) qs.set("full", "1");
-    const pr = fetch(window.API(`/api/place?${qs}`))
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
+    const pr = fetch(window.API(`/api/place?${qs}`), { signal: ctrl ? ctrl.signal : undefined })
       .then(r => r.json())
-      .catch(() => ({ found: false }));
+      .catch(() => ({ found: false, error: "NETWORK" }))
+      .then(d => {
+        if (timer) clearTimeout(timer);
+        /* 실패(네트워크·네이버 차단·서버 오류)는 기억하지 않는다 — 예전엔 한 번 실패하면
+         * 그 장소는 페이지를 새로 열 때까지 평점·사진이 영영 「정보 없음」이었다.
+         * 진짜 「등록 안 됨」(found:false, 오류 없음)만 기억해 같은 곳을 또 묻지 않는다. */
+        if (!d || d.error || d.throttled) placeCache.delete(key);
+        return d || { found: false };
+      });
     placeCache.set(key, pr);
     return pr;
   }
@@ -370,8 +489,17 @@
               `${range ? `(${range} 기준)` : ""}! 이 기준으로 갈 수 있는 곳을 골라 줄게 🐾`
         });
       } else {
-        d = await callAI({ mode: "breed", breed });
-        src = T("aj.gemini");
+        try {
+          d = await callAI({ mode: "breed", breed }, 12000);
+          src = T("aj.gemini");
+        } catch (e) {
+          // 표에 없는 품종인데 AI 도 못 답하면 — 오류 대신 몸무게로 정하는 길을 알려 준다
+          console.warn("AI 품종 분류 실패:", e.code || e.message);
+          box.innerHTML = T("aj.breedManual", { b: escapeHtml(breed) });
+          const w = $("#pfWeight");
+          if (w) w.focus({ preventScroll: true });
+          return;
+        }
       }
       const sizeLabel = window.I18N.isEn() ? T("size." + (d.sizeClass || "medium")) : (SIZE_KO[d.sizeClass] || "중형");
       const unit = window.I18N.isEn() ? (d.species === "cat" ? " cat" : " dog") : (d.species === "cat" ? "묘" : "견");

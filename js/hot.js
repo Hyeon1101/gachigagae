@@ -83,7 +83,12 @@
       numOfRows: "100", pageNo: "1"
     });
     if (area()) params.set("areaCode", area());
-    const res = await fetch(window.API(`/api/pettour?${params}`));
+    // 시한이 없으면 서버가 매달릴 때 「찾는 중…」이 영영 안 끝난다
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 25000) : null;
+    let res;
+    try { res = await fetch(window.API(`/api/pettour?${params}`), { signal: ctrl ? ctrl.signal : undefined }); }
+    finally { if (timer) clearTimeout(timer); }
     if (!res.ok) throw new Error(`API ${res.status}`);
     const json = await res.json();
     const body = json.response && json.response.body;
@@ -298,6 +303,18 @@
     if (home) home.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
     setTimeout(maybeLoad, 600);   // 짧은 화면에서 처음부터 보이는 경우
+    /* 맨 아래라 스크롤해야 보이는데, 후보 18곳의 평점을 네이버에서 받는 데 처음엔 20초 안팎 걸린다.
+     * 그래서 내려와 보면 늘 「찾는 중…」이었다 → 첫 화면이 다 뜬 뒤 한가할 때 미리 받아 둔다.
+     * (응답은 CDN 에 하루 남아 같은 지역·카테고리는 다음 방문자부터 즉시 온다) */
+    // 한가한 틈이 끝내 안 오는 환경(백그라운드 탭·숨은 창)도 있어 2초 시한을 함께 건다
+    const idle = window.requestIdleCallback
+      ? (fn) => window.requestIdleCallback(fn, { timeout: 2000 })
+      : (fn) => setTimeout(fn, 1);
+    setTimeout(() => idle(() => {
+      if (state.loaded) return;
+      state.loaded = true;
+      load();
+    }), 3000);
 
     const rf = $("#hotRefresh");
     if (rf) rf.addEventListener("click", () => { state.loaded = true; load(true); });

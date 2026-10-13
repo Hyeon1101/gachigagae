@@ -69,6 +69,43 @@
     out.innerHTML = `<table><tr><th>데이터</th><th>상태</th><th>상세</th></tr>${rows.join("")}</table>`;
   });
 
+  /* AI 는 조용히 죽는다 — 2026-10-13 에 구글 프로젝트 월 지출 한도 초과로 모든 AI 답이
+   * 실패하고 있었는데 화면만 봐서는 알 수 없었다. 여기서 한 번 불러 어느 모델이 몇 초에 답했는지,
+   * 실패면 왜 실패했는지(한도·키·과부하)를 사람 말로 보여 준다. */
+  var AI_REASON = {
+    spending_cap: "구글 프로젝트의 월 지출 한도 초과 → https://aistudio.google.com/spend 에서 한도를 올리거나, 다른 프로젝트에서 만든 키로 바꾸세요 (같은 프로젝트의 새 키는 소용없음).",
+    billing: "구글 결제 설정 문제 → AI Studio 의 결제(Billing) 화면을 확인하세요.",
+    invalid_key: "키가 거절됨 → dev\\set_gemini_key.ps1 로 올바른 키를 다시 넣으세요.",
+    location: "지역 제한으로 거절됨.",
+    unavailable: "모든 모델이 과부하·시간 초과 → 잠시 뒤 다시 점검하세요.",
+    rate_limited: "호출이 너무 잦음 → 1분 뒤 다시 점검하세요."
+  };
+  document.getElementById("aiCall").addEventListener("click", async function () {
+    out.innerHTML = "<p>AI 점검 중… (최대 20초)</p>";
+    const t0 = Date.now();
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "search", q: "서울에서 소형견이랑 갈 만한 실내 카페", lang: "ko" })
+      });
+      const j = await res.json().catch(() => ({}));
+      const wall = ((Date.now() - t0) / 1000).toFixed(1) + "초";
+      if (j.ok) {
+        out.innerHTML = `<table><tr><th>상태</th><th>모델</th><th>시간</th><th>해석 결과</th></tr>
+          <tr><td class="ok">정상 ✅</td><td>${esc(j.model)}</td><td>${esc(wall)} (서버 ${esc(j.ms)}ms)</td>
+          <td>${esc(JSON.stringify(j.data))}</td></tr></table>` +
+          (j.fallback ? `<pre>앞 모델 실패 기록: ${esc(JSON.stringify(j.fallback))}</pre>` : "");
+      } else {
+        const why = AI_REASON[j.reason] || (j.error === "NO_KEY" ? "키가 없음 → dev\\set_gemini_key.ps1 로 키를 넣으세요." : (j.message || j.error || ("HTTP " + res.status)));
+        out.innerHTML = `<table><tr><th>상태</th><th>이유</th><th>시간</th></tr>
+          <tr><td class="fail">실패</td><td>${esc(why)}</td><td>${esc(wall)}</td></tr></table>` +
+          `<pre>${esc(JSON.stringify(j, null, 2))}</pre>` +
+          "<p>※ AI 가 실패해도 사이트 검색은 질문 속 낱말로 계속 동작합니다(로컬 해석).</p>";
+      }
+    } catch (e) { pre("요청 실패: " + e.message); }
+  });
+
   document.getElementById("sampleCall").addEventListener("click", async function () {
     out.innerHTML = "<p>조회 중…</p>";
     try {

@@ -28,15 +28,34 @@ const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+/* 한 장소를 찾는 데 네이버 페이지를 최대 6번(검색·상세·후기 × 재검색) 연다.
+ * 한 번이라도 매달리면 함수 전체가 붙잡히므로 장마다 시한을 두고, 전체 예산을 넘기면
+ * 거기서 멈춘다(못 찾음으로 답한다 — 화면은 「방문 전 전화 확인」으로 이어 간다). */
+const PAGE_MS = 6000;
+const BUDGET_MS = 15000;
+
 async function getHtml(url, retry = 1) {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      "Accept": "text/html,application/xhtml+xml",
-      "Accept-Language": "ko-KR,ko;q=0.9",
-      "Referer": "https://m.place.naver.com/"
-    }
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PAGE_MS);
+  let res, text;
+  try {
+    res = await fetch(url, {
+      headers: {
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "ko-KR,ko;q=0.9",
+        "Referer": "https://m.place.naver.com/"
+      },
+      signal: ctrl.signal
+    });
+    if (res.ok) text = await res.text();
+  } catch (e) {
+    const err = new Error(e && e.name === "AbortError" ? "naver timeout" : "naver network");
+    err.status = 0;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   // 네이버는 짧은 시간에 몰아 치면 429를 준다 → 한 번만 쉬었다 다시
   if (res.status === 429 && retry > 0) {
     await sleep(800);
@@ -47,7 +66,7 @@ async function getHtml(url, retry = 1) {
     err.status = res.status;
     throw err;
   }
-  return res.text();
+  return text;
 }
 
 /** window.__APOLLO_STATE__ = {...} 를 중괄호 균형으로 잘라낸다.
@@ -185,12 +204,16 @@ exports.handler = async (event) => {
   p.addr = String(p.addr || "").slice(0, 120);
   if (!q) return { statusCode: 400, headers, body: JSON.stringify({ error: "NO_QUERY" }) };
 
+  const started = Date.now();
+  const overBudget = () => Date.now() - started > BUDGET_MS;
+
   // 「이름이 일치 + 같은 시·군·구」인 후보만 채택한다.
   // 첫 결과를 그냥 쓰면 "2Cats"(종로) → 엉뚱한 왕십리 분양샵 평점이 붙는다.
   async function resolve(query) {
     const items = await search(query, p.x, p.y);
     const cands = items.filter(it => nameMatches(it.name, q) && isPlaceId(it.id)).slice(0, 2);
     for (const hit of cands) {
+      if (overBudget()) return null;
       const d = await detail(hit.id, p.full === "1");
       // 목록의 roadAddress는 시·구가 빠져 있어 상세의 전체 주소로 지역을 확인한다
       if (!addrAgrees(p.addr, d.roadAddress || hit.roadAddress)) continue;
@@ -212,12 +235,15 @@ exports.handler = async (event) => {
   try {
     let out = await resolve(q);
     // 좌표 편향만으로 못 찾거나 다른 동네 가게가 잡히면 지역명을 붙여 한 번 더
-    if (!out && p.addr) {
+    if (!out && p.addr && !overBudget()) {
       const area = String(p.addr).split(" ").filter(Boolean).slice(0, 3).join(" ");
       out = await resolve(`${area} ${q}`);
     }
+    // 시간이 모자라 끝까지 못 찾은 「못 찾음」은 하루 동안 캐시하면 안 된다 — 다음 번엔 찾을 수 있다
+    const cut = !out && overBudget();
     return {
-      statusCode: 200, headers,
+      statusCode: 200,
+      headers: cut ? Object.assign({}, headers, { "Cache-Control": "no-store" }) : headers,
       body: JSON.stringify(out || { found: false, q })
     };
   } catch (e) {

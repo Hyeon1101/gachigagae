@@ -50,10 +50,38 @@
     };
   }
 
+  /** 서버 호출 — 시한 30초, 연결 실패·5xx 는 한 번만 더.
+   *  예전엔 서버가 HTML 오류 페이지(502 등)를 주면 res.json() 이 터져
+   *  「Unexpected token <」 같은 알 수 없는 문구가 화면에 그대로 나갔다. */
   async function callApi(src, params = {}) {
     const q = new URLSearchParams({ src, ...params }).toString();
-    const res = await fetch(window.API(`/api/extra?${q}`));
-    const json = await res.json();
+    const url = window.API(`/api/extra?${q}`);
+    let res, last;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 30000) : null;
+      try {
+        res = await fetch(url, { signal: ctrl ? ctrl.signal : undefined });
+        if (res.status >= 500 && attempt === 0) { last = new Error(`HTTP ${res.status}`); res = null; }
+      } catch (e) {
+        last = e;
+        res = null;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (res) break;
+      await new Promise(r => setTimeout(r, 600));
+    }
+    if (!res) {
+      const msg = window.T ? window.T("ex.serverDown") : "공공데이터 서버가 응답하지 않습니다.";
+      throw Object.assign(new Error(msg), { info: { hint: msg }, cause: last });
+    }
+    let json;
+    try { json = await res.json(); }
+    catch (_) {
+      const msg = window.T ? window.T("ex.serverDown") : "공공데이터 서버가 응답하지 않습니다.";
+      throw Object.assign(new Error(msg), { info: { hint: msg } });
+    }
     if (json.error) throw Object.assign(new Error(json.hint || json.message || json.error), { info: json });
     return json;
   }
@@ -119,26 +147,53 @@
   const Extra = {
     CATEGORIES,
 
-    /** 문화정보원 시설 로드 — 카테고리2 + 시도로 서버측 필터 */
+    /** 문화정보원 시설 로드 — 카테고리2 + 시도로 서버측 필터
+     *  1쪽으로 전체 건수를 알아낸 뒤 나머지 쪽은 3개씩 동시에 받는다.
+     *  (예전엔 한 쪽씩 차례로 받아, 동물병원처럼 수천 곳인 카테고리는 쪽당 3초 × 열두 번을 기다렸다)
+     *  쪽이 도착하는 대로 onPage 로 알리되, 순서는 항상 1쪽부터 이어 붙인다. */
     async loadCulture({ catKey, sido = "", perPage = 1000, maxPages = 12, onPage } = {}) {
       const c = CATEGORIES[catKey];
-      let all = [], schema = null, label = "한국문화정보원", matched = 0;
-      for (let page = 1; page <= maxPages; page++) {
-        const params = { page, perPage };
-        if (c) params.cat = c.cat;
-        if (sido) params.sido = sido;
-        const json = await callApi("culture", params);
-        label = json.label || label;
-        const rows = json.data || [];
-        matched = json.matchCount != null ? json.matchCount : (json.totalCount || 0);
-        if (!rows.length) break;
-        if (!schema) { schema = detectSchema(rows[0]); schemaCache.culture = schema; }
-        const mapped = rows.map(r => toPlace(r, schema, label, (c && c.typeId) || "14"));
-        all = all.concat(mapped.filter(p => !isNaN(p.mapx) && !isNaN(p.mapy)));
-        if (onPage) onPage(all, matched);
-        if (page * perPage >= matched) break;
+      let schema = null, label = "한국문화정보원", matched = 0;
+      const base = { perPage };
+      if (c) base.cat = c.cat;
+      if (sido) base.sido = sido;
+      const typeId = (c && c.typeId) || "14";
+      const mapRows = (rows) => rows
+        .map(r => toPlace(r, schema, label, typeId))
+        .filter(p => !isNaN(p.mapx) && !isNaN(p.mapy));
+
+      const first = await callApi("culture", Object.assign({ page: 1 }, base));
+      label = first.label || label;
+      const rows1 = first.data || [];
+      matched = first.matchCount != null ? first.matchCount : (first.totalCount || 0);
+      if (!rows1.length) return { items: [], schema, label, matched };
+      schema = detectSchema(rows1[0]);
+      schemaCache.culture = schema;
+
+      const pages = Math.min(maxPages, Math.max(1, Math.ceil(matched / perPage)));
+      const buckets = new Array(pages);
+      buckets[0] = mapRows(rows1);
+      const flatten = () => [].concat(...buckets.filter(Boolean));
+      if (onPage) onPage(flatten(), matched);
+
+      const queue = [];
+      for (let p = 2; p <= pages; p++) queue.push(p);
+      let failed = 0;
+      async function worker() {
+        while (queue.length) {
+          const page = queue.shift();
+          try {
+            const json = await callApi("culture", Object.assign({ page }, base));
+            buckets[page - 1] = mapRows(json.data || []);
+          } catch (_) {
+            buckets[page - 1] = [];          // 한 쪽이 실패해도 나머지는 보여 준다
+            failed++;
+          }
+          if (onPage) onPage(flatten(), matched);
+        }
       }
-      return { items: all, schema, label, matched };
+      await Promise.all(Array.from({ length: Math.min(3, queue.length) }, worker));
+      return { items: flatten(), schema, label, matched, failedPages: failed };
     },
 
     /** 동물병원 — 행안부 CSV를 좌표변환(EPSG:5174→WGS84)해 번들한 정적 데이터 */

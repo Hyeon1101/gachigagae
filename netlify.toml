@@ -22,6 +22,32 @@
   to = "/.netlify/functions/place"
   status = 200
 
+# 배포 폴더가 저장소 루트(".")라 서버 코드·내부 문서·키 넣기 스크립트까지 그대로
+# 공개 주소로 열려 있었다(예: /netlify/functions/ai.js, /보안점검보고서.md) → 404 로 막는다.
+[[redirects]]
+  from = "/netlify/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/dev/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/docs/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/README.md"
+  to = "/404"
+  status = 404
+  force = true
+
 # ─────────────────────────────────────────────────────────────
 # 보안 헤더
 #

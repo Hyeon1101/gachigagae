@@ -33,13 +33,28 @@ const ALLOWED_PARAMS = [
 ];
 const opCache = {}; // opBase → 성공한 전체 URL prefix
 
-async function tryCall(base, op, qs) {
+/* 공공데이터포털은 가끔 응답 없이 매달린다. 시한이 없으면 함수가 플랫폼 한도까지
+ * 붙잡혀 있다가 통째로 끊기고, 화면은 그동안 「불러오는 중」에서 멈춰 있다. */
+const CALL_MS = 9000;      // 한 번 부를 때
+const BUDGET_MS = 20000;   // 폴백까지 다 합친 한도
+
+async function tryCall(base, op, qs, ms) {
   const url = `${base}/${op}?${qs}`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
-  const text = await res.text();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms || CALL_MS);
+  let res, text;
+  try {
+    res = await fetch(url, { headers: { Accept: "application/json" }, signal: ctrl.signal });
+    text = await res.text();
+  } catch (e) {
+    // 연결 실패·시간 초과 — 상류가 아예 대답을 안 한 경우
+    return { ok: false, transport: true, why: e && e.name === "AbortError" ? "timeout" : "network" };
+  } finally {
+    clearTimeout(timer);
+  }
   try {
     const json = JSON.parse(text);
-    if (!json.response) return { ok: false, why: "no response envelope", json };
+    if (!json.response) return { ok: false, transport: res.status >= 500, why: "no response envelope", json };
     const rc = String((json.response.header && json.response.header.resultCode) || "");
     if (rc && rc !== "0000" && rc !== "00") {
       return { ok: false, why: `resultCode=${rc} ${(json.response.header.resultMsg) || ""}`, json };
@@ -48,7 +63,14 @@ async function tryCall(base, op, qs) {
   } catch (_) {
     // XML 오류 응답(HTTP ROUTING ERROR, SERVICE KEY 오류 등)
     const m = text.match(/<returnAuthMsg>([^<]+)<|<errMsg>([^<]+)</);
-    return { ok: false, why: (m && (m[1] || m[2])) || `HTTP ${res.status} non-JSON`, raw: text.slice(0, 200) };
+    return {
+      ok: false,
+      // 5xx·HTML 오류 페이지는 「서버가 아팠다」, 키·한도 오류(XML 메시지)는 「우리 요청이 거절됐다」
+      transport: !m && res.status >= 500,
+      routing: !m && (res.status === 404 || /ROUTING/i.test(text)),
+      why: (m && (m[1] || m[2])) || `HTTP ${res.status} non-JSON`,
+      raw: text.slice(0, 200)
+    };
   }
 }
 
@@ -62,17 +84,20 @@ exports.handler = async (event) => {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800"
   };
+  // 실패 응답은 캐시하면 안 된다 — 일시적인 오류가 하루 동안 굳어 버린다
+  const noStore = Object.assign({}, headers, { "Cache-Control": "no-store" });
 
   // 앱(Capacitor, 오리진 https://localhost)에서도 부를 수 있게 CORS 허용
   Object.assign(headers, withCors({}, event));
+  Object.assign(noStore, withCors({}, event));
   const _pf = preflight(event, headers);
   if (_pf) return _pf;
 
   if (!ALLOWED_OPS.includes(opBase)) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: "BAD_OP", allowed: ALLOWED_OPS }) };
+    return { statusCode: 400, headers: noStore, body: JSON.stringify({ error: "BAD_OP", allowed: ALLOWED_OPS }) };
   }
   if (!key) {
-    return { statusCode: 503, headers, body: JSON.stringify({ error: "NO_KEY", message: "TOURAPI_KEY 환경변수가 설정되지 않았습니다. netlify env:set TOURAPI_KEY <키> 후 재배포하세요." }) };
+    return { statusCode: 503, headers: noStore, body: JSON.stringify({ error: "NO_KEY", message: "TOURAPI_KEY 환경변수가 설정되지 않았습니다. netlify env:set TOURAPI_KEY <키> 후 재배포하세요." }) };
   }
 
   const params = new URLSearchParams({
@@ -99,7 +124,7 @@ exports.handler = async (event) => {
         report.push({ endpoint: `${base}/${opBase}${suffix}`, ok: r.ok, why: r.why || "OK" });
       }
     }
-    return { statusCode: 200, headers, body: JSON.stringify({ probe: report }, null, 2) };
+    return { statusCode: 200, headers: noStore, body: JSON.stringify({ probe: report }, null, 2) };
   }
 
   // 캐시된 성공 경로 우선
@@ -112,14 +137,27 @@ exports.handler = async (event) => {
     }
   }
 
+  const started = Date.now();
   let lastWhy = "";
-  for (const c of candidates) {
-    const r = await tryCall(c.base, c.op, qs);
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    const left = BUDGET_MS - (Date.now() - started);
+    if (left < 1500) { lastWhy = lastWhy || "timeout"; break; }
+    let r = await tryCall(c.base, c.op, qs, Math.min(CALL_MS, left));
+    // 상류가 잠깐 아팠던 것(연결 실패·5xx)은 같은 주소로 한 번만 더
+    if (!r.ok && r.transport && BUDGET_MS - (Date.now() - started) > 3000) {
+      await new Promise(res => setTimeout(res, 400));
+      r = await tryCall(c.base, c.op, qs, Math.min(CALL_MS, BUDGET_MS - (Date.now() - started)));
+    }
     if (r.ok) {
       opCache[opBase] = c;
       return { statusCode: 200, headers, body: JSON.stringify(r.json) };
     }
     lastWhy = r.why;
+    /* 응답 봉투가 제대로 왔는데 resultCode 가 오류(키 미등록·일일 한도 초과 등)면
+     * 구버전 주소로 가도 똑같이 거절된다 — 폴백을 돌며 시간을 버리지 않는다.
+     * (구버전 KorPetTourService1 은 2026-07 기준 500 "Unexpected errors" 로 사실상 종료) */
+    if (!r.transport && !r.routing) break;
   }
-  return { statusCode: 502, headers, body: JSON.stringify({ error: "UPSTREAM_FAIL", message: lastWhy }) };
+  return { statusCode: 502, headers: noStore, body: JSON.stringify({ error: "UPSTREAM_FAIL", message: lastWhy }) };
 };

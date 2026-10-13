@@ -289,6 +289,8 @@
     "ex.step1s": " (무료·즉시)",
     "ex.step2": "② 승인 후 새로고침하면 <b>70,650곳</b>이 자동 표시됩니다",
     "ex.step3": "※ 기존 인증키를 그대로 사용하므로 새 키는 필요 없습니다",
+    "ex.serverDown": "공공데이터 서버가 잠시 응답하지 않아요.",
+    "ex.retry": "잠시 후 카테고리를 다시 눌러 주세요.",
 
     /* ── 홈 요약 카드 (tips.js) ── */
     "in.pet": "우리 아이", "in.gear": "준비물", "in.none": "없음",
@@ -373,6 +375,8 @@
     "aj.indoor": "실내",
     "aj.nameExample": "예: 우리 {name}",
     "aj.searchResult": "AI 검색 결과",
+    "aj.localReply": "질문 속 지역·종류·크기로 바로 찾아볼게! 🐾",
+    "aj.breedManual": "<b>{b}</b>은(는) 표준 견종표에 없는 품종이야. 아래에 <b>몸무게</b>를 넣으면 크기(소형·중형·대형)는 자동으로 정해 줄게 🐾",
 
     /* ── 따라다니는 도우미 ── */
     "bd.hello": "안녕! 나는 여행 도우미 <b>가개</b>야. 화면을 따라다니면서 안내할게 🐾",
@@ -699,6 +703,8 @@
     "ex.step1s": " (free, instant)",
     "ex.step2": "② After approval, refresh and <b>70,650 places</b> appear automatically",
     "ex.step3": "※ The existing key is reused — no new key needed",
+    "ex.serverDown": "The public data server isn't responding right now.",
+    "ex.retry": "Please tap the category again in a moment.",
 
     "in.pet": "Your pet", "in.gear": "Gear", "in.none": "None",
     "in.empty": "No pet details yet.<br><span>Add them and every place gets judged <b>against your pet</b>.</span>",
@@ -779,6 +785,8 @@
     "aj.indoor": "indoor",
     "aj.nameExample": "e.g. my {name}",
     "aj.searchResult": "AI search results",
+    "aj.localReply": "Let me search right away using the region, type and size in your question! 🐾",
+    "aj.breedManual": "<b>{b}</b> isn't in our standard breed table. Enter the <b>weight</b> below and I'll set the size (small · medium · large) automatically 🐾",
 
     /* ── Floating buddy ── */
     "bd.hello": "Hi! I'm <b>Gagae</b>, your travel buddy. I'll follow along and help out 🐾",
