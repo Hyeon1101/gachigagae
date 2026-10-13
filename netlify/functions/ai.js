@@ -58,8 +58,12 @@ const CHAIN_OF = { search: "fast", breed: "fast", advise: "smart" };
 /* 점검용으로 모델 하나만 지정해 부를 수 있다(체인에 있는 모델만 — 비싼 모델로 새지 않게) */
 const KNOWN_MODELS = new Set(CHAINS.fast.concat(CHAINS.smart));
 
-const PER_CALL_MS = { fast: 7000, smart: 12000 };   // 한 번 부를 때 기다리는 한도
-const BUDGET_MS = 18000;                            // 체인 전체 한도 — 함수·CDN 이 끊기 전에 끝낸다
+/* 한 번 부를 때 기다리는 한도 — 평소 Lite 0.6~1.2초, 3.8-flash 1.7~3초(2026-10-13 실측).
+ * 3.8-flash 가 가끔 8초 넘게 매달려서, 그때는 기다리지 말고 다음 모델로 넘어간다. */
+const PER_CALL_MS = { fast: 5000, smart: 8000 };
+/* 체인 전체 한도 — 화면(js/ai.js)이 검색·품종 12초, 추천 15초에 끊으므로 그보다 먼저 답한다.
+ * 이보다 늦으면 화면은 이미 로컬 해석으로 넘어가 서버의 대체 모델 답이 버려진다. */
+const BUDGET_MS = { fast: 10000, smart: 13000 };
 
 /* AI Studio 키는 Gemini API, Vertex 익스프레스 키(AQ.… 가 많다)는 Vertex AI 가 받는다.
  * 요청·응답 모양은 같다 → Gemini API 로 먼저 부르고, 키를 거절하면 Vertex 로 한 번 더.
@@ -200,11 +204,26 @@ ${fence("후보 장소 (형식: 번호. 상호 | 주소 | 판정 | 규정)", pla
 /* ══════════ 호출 ══════════ */
 
 /** thinking 은 끈다 — JSON 한 덩이를 만드는 일이라 추론 예산은 지연만 늘리고
- *  maxOutputTokens 를 먹어 본문이 잘린다. *-latest 별칭 중에는 thinkingConfig 를
- *  보내면 400 을 내는 모델이 있어 뺀다(실측). */
-function genConfig(model) {
+ *  maxOutputTokens 를 먹어 본문이 잘린다.
+ *  끄는 방법을 모델마다 다르게 받는다(2026-10-13 실측):
+ *   · 2.5-flash · 3.1-flash-lite · 3.5-flash · 3.8-flash : thinkingBudget 0
+ *     (3.8-flash 는 thinkingLevel "minimal" 을, 2.5 는 thinkingLevel 자체를 400 으로 거절)
+ *   · 3.5-flash-lite : thinkingBudget 을 "Request contains an invalid argument." 400 으로 거절
+ *     → thinkingLevel "minimal" 로 보낸다
+ *   · *-latest 별칭 중에는 thinkingConfig 를 보내면 400 을 내는 모델이 있다 → 보내지 않는다
+ *  새 모델은 어느 쪽인지 모르므로 400 이 오면 아래 순서로 같은 모델을 다시 부른다
+ *  (400 은 토큰을 쓰기 전 0.1초 만에 돌아온다). 통한 방법은 인스턴스가 살아 있는 동안 기억한다. */
+const THINKING = [{ thinkingBudget: 0 }, { thinkingLevel: "minimal" }, null];
+const thinkingLearned = new Map();
+function thinkingStart(model) {
+  if (thinkingLearned.has(model)) return thinkingLearned.get(model);
+  if (/-latest$/.test(model)) return 2;
+  if (/^gemini-3\.5-flash-lite/.test(model)) return 1;
+  return 0;
+}
+function genConfig(think) {
   const g = { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 2048 };
-  if (!/-latest$/.test(model)) g.thinkingConfig = { thinkingBudget: 0 };
+  if (THINKING[think]) g.thinkingConfig = THINKING[think];
   return g;
 }
 
@@ -255,6 +274,13 @@ function reasonOf(status, text) {
 }
 const FATAL = new Set(["spending_cap", "billing", "invalid_key", "location"]);
 
+/** 상류 오류 문구 한 줄 — 로그에만 남긴다(응답에는 이유 코드만 나간다) */
+function errText(text) {
+  let m = text;
+  try { m = JSON.parse(text).error.message; } catch (_) { /* 원문 그대로 */ }
+  return String(m || "").replace(/\s+/g, " ").slice(0, 160);
+}
+
 /** 모델이 준 JSON 을 너그럽게 읽는다 — ```json 울타리·앞뒤 군말까지 걷어 낸다 */
 function looseJson(s) {
   const t = String(s || "").trim();
@@ -285,33 +311,34 @@ async function generate(chainName, prompt, key, forcedModel) {
   const chain = forcedModel ? [forcedModel] : CHAINS[chainName];
   const started = Date.now();
   const tried = [];
+  const timeLeft = () => (BUDGET_MS[chainName] || 13000) - (Date.now() - started);
   for (const model of chain) {
-    const left = BUDGET_MS - (Date.now() - started);
-    if (left < 1500) { tried.push({ model, reason: "no_time" }); break; }
-    let cfg = genConfig(model);
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: cfg });
+    if (timeLeft() < 1500) { tried.push({ model, reason: "no_time" }); break; }
+    let think = thinkingStart(model);
+    for (;;) {
+      const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: genConfig(think) });
       let r;
       try {
-        r = await request(model, body, key, Math.min(PER_CALL_MS[chainName] || 9000, left));
+        r = await request(model, body, key, Math.min(PER_CALL_MS[chainName] || 9000, timeLeft()));
       } catch (e) {
         tried.push({ model, reason: e && e.name === "AbortError" ? "timeout" : "network" });
         break;                                   // 같은 모델을 또 기다리지 않는다
       }
       if (r.status === 200) {
+        thinkingLearned.set(model, think);
         const a = readAnswer(r.text);
         if (a.data) return { model, data: a.data, tried, ms: Date.now() - started };
         tried.push({ model, status: 200, reason: a.why });
         break;
       }
-      // thinkingConfig 를 안 받는 모델 — 빼고 한 번만 더
-      if (r.status === 400 && attempt === 0 && cfg.thinkingConfig && /thinking/i.test(r.text)) {
-        cfg = Object.assign({}, cfg);
-        delete cfg.thinkingConfig;
+      const reason = reasonOf(r.status, r.text);
+      // 추론 끄는 방법을 안 받는 모델 — 다음 방법으로 같은 모델을 한 번 더
+      if (reason === "bad_request" && think < THINKING.length - 1 && timeLeft() >= 1500) {
+        console.log(`[ai] ${model} 400 with ${JSON.stringify(THINKING[think])}, trying ${JSON.stringify(THINKING[think + 1])}: ${errText(r.text)}`);
+        think++;
         continue;
       }
-      const reason = reasonOf(r.status, r.text);
-      tried.push({ model, status: r.status, reason });
+      tried.push({ model, status: r.status, reason, msg: errText(r.text) });
       if (FATAL.has(reason)) {
         const err = new Error(reason);
         err.reason = reason;
@@ -457,10 +484,13 @@ exports.handler = async (event) => {
     const data = mode === "search" ? normSearch(r.data, lang)
       : mode === "breed" ? normBreed(r.data, clip(body.breed, 40))
       : normAdvise(r.data, candidateCount);
-    console.log(`[ai] ${mode} ok ${r.model} ${r.ms}ms${r.tried.length ? " after " + r.tried.map(t => t.model + ":" + t.reason).join(",") : ""}`);
+    console.log(`[ai] ${mode} ok ${r.model} ${r.ms}ms${r.tried.length ? " after " + r.tried.map(t => t.model + ":" + t.reason + (t.msg ? ` (${t.msg})` : "")).join(", ") : ""}`);
     return {
       statusCode: 200, headers,
-      body: JSON.stringify({ ok: true, model: r.model, ms: r.ms, data, fallback: r.tried.length ? r.tried : undefined })
+      body: JSON.stringify({
+        ok: true, model: r.model, ms: r.ms, data,
+        fallback: r.tried.length ? r.tried.map(t => ({ model: t.model, status: t.status, reason: t.reason })) : undefined
+      })
     };
   } catch (e) {
     // 상류 응답 원문은 그대로 흘리지 않는다 — 내부 주소가 섞여 있을 수 있다(로그에만)

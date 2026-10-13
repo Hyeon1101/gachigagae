@@ -31,6 +31,10 @@
 - 모델 체인(2026-10): 검색·품종 = `gemini-3.5-flash-lite → 3.1-flash-lite → 3.5-flash → 2.5-flash → 2.5-flash-lite`,
   추천 = `gemini-3.8-flash → 3.5-flash → 3.5-flash-lite → 2.5-flash`. 503·404·응답 잘림은 다음 모델로,
   **월 지출 한도 초과·키 거절은 즉시 중단**(같은 키로는 어느 모델도 안 됨). 환경변수 `GEMINI_FAST_MODELS` / `GEMINI_SMART_MODELS` 로 순서 변경 가능.
+- 추론(thinking)은 끈다. `3.5-flash-lite` 는 `thinkingBudget: 0` 을 400 으로 거절해 `thinkingLevel: "minimal"` 로 보낸다.
+  처음 보는 모델이 400 을 주면 함수가 `thinkingBudget 0 → thinkingLevel minimal → 설정 없음` 순서로 다시 부른다.
+- 실측(2026-10-13, 배포 서버): 검색 0.6~1.0초 · 품종 1.1초(3.5-flash-lite), 추천 1.7~3초(3.8-flash).
+  한 모델이 검색·품종 5초, 추천 8초를 넘기면 다음 모델로 넘어간다. 체인 전체는 10초·13초 안에 끝나서 화면 대기 한도(12초·15초)보다 먼저 답한다.
 - AI 가 실패해도 검색은 멈추지 않는다 — 화면이 질문 속 낱말(지역·종류·크기·실내)로 조건을 만들어 이어 간다.
 - 키 넣기/바꾸기: `powershell -ExecutionPolicy Bypass -File dev\set_gemini_key.ps1` (키는 Netlify 비밀값으로만 저장, 저장 후 자동 재배포)
 - 상태 점검: `/apitest.html` → 「AI 도우미 점검」
